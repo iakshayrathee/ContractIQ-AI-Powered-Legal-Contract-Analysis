@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi, queryApi } from "@/lib/api";
@@ -9,7 +9,7 @@ import type { ChatMessage, ChatMessageResponse, Project, SourceChunk } from "@/l
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import ChatEmptyState from "./ChatEmptyState";
-import { Sparkles, FileText, Trash2, Download, X } from "lucide-react";
+import { FileText, Trash2, Download, Sparkles } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { exportConversation } from "@/lib/export";
 
@@ -34,12 +34,7 @@ interface Props {
   project: Project;
 }
 
-interface ChatInputProps {
-  onSubmit: (message: string) => void;
-  loading: boolean;
-  disabled?: boolean;
-  onCancel?: () => void;
-}
+
 
 export default function ChatPanel({ project }: Props) {
   const qc = useQueryClient();
@@ -73,7 +68,13 @@ export default function ChatPanel({ project }: Props) {
     try {
       const raw = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
       if (raw) {
-        const parsed: any[] = JSON.parse(raw);
+        const parsed: Array<{
+          id: string;
+          role: "user" | "assistant";
+          content: string;
+          timestamp: string;
+          sources?: SourceChunk[];
+        }> = JSON.parse(raw);
         const restored: ChatMessage[] = parsed.map((m) => ({ ...m, timestamp: new Date(m.timestamp) }));
         if (restored.length > 0) setOptimisticMessages(restored);
       }
@@ -97,12 +98,17 @@ export default function ChatPanel({ project }: Props) {
   //   - ID match: optimistic id already returned by backend (rare — only if backend echoes client id)
   //   - Content match: backend persisted the message with a new UUID, so we compare role+content
   //     to suppress the optimistic copy once history has caught up.
-  const historyIds = new Set(history.map((m) => m.id));
-  const historyKeys = new Set(history.map((m) => dedupKey(m.role, m.content)));
-  const pendingOptimistics = optimisticMessages.filter(
-    (m) => !historyIds.has(m.id) && !historyKeys.has(dedupKey(m.role, m.content))
-  );
-  const messages = [...history, ...pendingOptimistics];
+  const { messages, pendingOptimistics } = useMemo(() => {
+    const historyIds = new Set(history.map((m) => m.id));
+    const historyKeys = new Set(history.map((m) => dedupKey(m.role, m.content)));
+    const pendingOptimistics = optimisticMessages.filter(
+      (m) => !historyIds.has(m.id) && !historyKeys.has(dedupKey(m.role, m.content))
+    );
+    return {
+      messages: [...history, ...pendingOptimistics],
+      pendingOptimistics
+    };
+  }, [history, optimisticMessages]);
 
   // Once history has caught up with our optimistic messages, clear the optimistics.
   // Match by BOTH id AND content+role so we handle the common case where the backend
@@ -170,8 +176,12 @@ export default function ChatPanel({ project }: Props) {
       content: "",
       timestamp: new Date(),
     };
-    setOptimisticMessages((prev) => [...prev, userMsg, assistantMsg]);
-    setIsStreaming(true);
+    
+    // Using flushSync to ensure React updates synchronously before streaming
+    flushSync(() => {
+      setOptimisticMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setIsStreaming(true);
+    });
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -326,7 +336,6 @@ export default function ChatPanel({ project }: Props) {
               <MessageBubble
                 key={`msg-${i}`}
                 message={msg}
-                projectName={project.name}
                 isLatest={i === messages.length - 1 && msg.role === "assistant"}
                 isStreaming={isStreaming}
                 isMostRecent={i === messages.length - 1}

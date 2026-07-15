@@ -14,7 +14,6 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const { user, isLoading } = useAuth();
 
   const isPublic = PUBLIC_ROUTES.has(pathname);
-  const isLanding = pathname === "/";
 
   // Redirect unauthenticated users away from protected routes
   useEffect(() => {

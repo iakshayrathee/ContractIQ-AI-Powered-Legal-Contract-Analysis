@@ -1,7 +1,6 @@
 "use client";
 
 import { useAnalysis } from "@/lib/hooks/useProjectQueries";
-import { contractsApi } from "@/lib/api";
 import type { Project, RiskItem } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { ShieldAlert, AlertTriangle, ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";

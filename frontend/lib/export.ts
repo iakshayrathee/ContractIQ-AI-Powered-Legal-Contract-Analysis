@@ -12,7 +12,7 @@ export interface ExportOptions {
  * Export analysis data to CSV
  */
 export function exportToCSV(
-  data: Record<string, any>[],
+  data: Record<string, unknown>[],
   filename: string
 ): void {
   if (!data || data.length === 0) return;

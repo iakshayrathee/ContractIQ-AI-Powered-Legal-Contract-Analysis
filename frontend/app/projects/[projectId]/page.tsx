@@ -2,8 +2,6 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useProject } from "@/lib/hooks/useProjectQueries";
-import { projectsApi } from "@/lib/api";
-import type { Project } from "@/lib/types";
 import ChatPanel from "@/components/chat/ChatPanel";
 import KnowledgeBase from "@/components/project/KnowledgeBase";
 import ContractAnalysisPanel from "@/components/contract/ContractAnalysisPanel";

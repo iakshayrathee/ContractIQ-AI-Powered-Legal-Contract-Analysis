@@ -110,7 +110,7 @@ export default function ProjectsPage() {
           <div className="flex items-center gap-2 shrink-0">
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as "date" | "name" | "docs")}
               className="text-xs bg-card border border-border text-white/80 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-gold/50 cursor-pointer"
             >
               <option value="date">Sort by: Date (Newest)</option>

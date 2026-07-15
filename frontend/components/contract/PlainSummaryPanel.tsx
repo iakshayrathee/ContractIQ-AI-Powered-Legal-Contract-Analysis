@@ -1,7 +1,6 @@
 "use client";
 
 import { useAnalysis } from "@/lib/hooks/useProjectQueries";
-import { contractsApi } from "@/lib/api";
 import type { Project } from "@/lib/types";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileText, Users, Calendar, AlertTriangle, CheckCircle2, Copy, Check, Loader2 } from "lucide-react";
@@ -34,7 +33,7 @@ function CopyButton({ text }: { text: string }) {
 
 function Section({ title, icon: Icon, iconColor, children, copyText }: {
   title: string;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   children: React.ReactNode;
   copyText?: string;

@@ -65,7 +65,7 @@ function StatCard({
 }: {
   label: string;
   value: string | number;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   iconColor: string;
   iconBg: string;
   subtitle?: string;
@@ -129,7 +129,17 @@ function DashboardSkeleton() {
   );
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipPayload {
+  value: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayload[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-surface border border-gold/20 rounded-xl px-3.5 py-2.5 shadow-glow-sm">

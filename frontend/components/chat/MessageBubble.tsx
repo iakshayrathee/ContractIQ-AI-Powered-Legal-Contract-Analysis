@@ -5,13 +5,10 @@ import { useState, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/Badge";
-import { Scale, FileText, Table2, Copy, Check, RotateCcw, ThumbsUp, ThumbsDown, ExternalLink, ChevronDown, ChevronUp } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { Scale, FileText, Table2, Copy, Check, RotateCcw, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Props {
   message: ChatMessage;
-  projectName: string;
   isLatest?: boolean;
   isStreaming?: boolean;
   /** True if this is the most recent message in the list (any role) */
@@ -24,7 +21,6 @@ interface Props {
 
 export default function MessageBubble({
   message,
-  projectName,
   isLatest = false,
   isStreaming = false,
   isMostRecent = false,
@@ -197,6 +193,7 @@ export default function MessageBubble({
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {allImages.map((img, j) => (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           key={j}
                           src={`data:image/jpeg;base64,${img}`}
@@ -265,9 +262,6 @@ export default function MessageBubble({
                 {displaySources.map((source, i) => {
                   const score = source.relevance_score;
                   const p = source.page_numbers?.[0];
-                  const pdfUrl = source.source_file
-                    ? `${API_BASE}/projects/${encodeURIComponent(projectName)}/documents/${encodeURIComponent(source.source_file)}#page=${p}`
-                    : null;
 
                   const getScoreColor = () => {
                     if (!score) return "text-gray-400";
@@ -325,6 +319,7 @@ export default function MessageBubble({
                       {source.images_base64 && source.images_base64.length > 0 && (
                         <div className="flex gap-2 mt-1 overflow-x-auto pb-1">
                           {source.images_base64.map((img, j) => (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               key={j}
                               src={`data:image/jpeg;base64,${img}`}

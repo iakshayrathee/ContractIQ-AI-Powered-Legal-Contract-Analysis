@@ -275,7 +275,7 @@ export const contractsApi = {
   getAnalysis: (projectName: string): Promise<AnalysisResponse> =>
     request(`/projects/${encodeURIComponent(projectName)}/analysis`),
 
-  getClauses: (projectName: string, type?: string): Promise<{ project_name: string; total: number; clauses: any[] }> => {
+  getClauses: (projectName: string, type?: string): Promise<{ project_name: string; total: number; clauses: unknown[] }> => {
     const params = type ? `?type=${type}` : "";
     return request(`/projects/${encodeURIComponent(projectName)}/analysis/clauses${params}`);
   },
@@ -301,10 +301,10 @@ export const analysisApi = {
     question: string,
     k: number | undefined,
     callbacks: SSECallbacks,
-    accessToken: string | null,
+    _accessToken: string | null,
     signal?: AbortSignal
   ): Promise<void> => {
-    const tokenToUse = accessToken || activeAccessToken;
+    const tokenToUse = _accessToken || activeAccessToken;
     const res = await fetch(`${BASE_URL}/analysis/stream`, {
       method: "POST",
       headers: {

@@ -30,28 +30,28 @@ export default function ChunksPage({ projectName }: Props) {
     queryFn: () => projectsApi.chunks(projectName, typeFilter),
   });
 
-  const chunks = data?.chunks ?? [];
+  const allChunks = useMemo(() => data?.chunks ?? [], [data?.chunks]);
 
   // Client-side search filtering
   const filteredChunks = useMemo(() => {
-    if (!searchQuery.trim()) return chunks;
+    if (!searchQuery.trim()) return allChunks;
     const query = searchQuery.toLowerCase();
-    return chunks.filter(
+    return allChunks.filter(
       (c) =>
         c.content.toLowerCase().includes(query) ||
         c.raw_text.toLowerCase().includes(query) ||
         c.source_file?.toLowerCase().includes(query) ||
         c.clause_type?.toLowerCase().includes(query)
     );
-  }, [chunks, searchQuery]);
+  }, [allChunks, searchQuery]);
 
   // Calculate statistics
   const stats = useMemo(() => {
-    const textCount = chunks.filter((c) => c.content_types.includes("text")).length;
-    const tableCount = chunks.filter((c) => c.content_types.includes("table")).length;
-    const imageCount = chunks.filter((c) => c.content_types.includes("image")).length;
-    return { textCount, tableCount, imageCount, total: chunks.length };
-  }, [chunks]);
+    const textCount = allChunks.filter((c) => c.content_types.includes("text")).length;
+    const tableCount = allChunks.filter((c) => c.content_types.includes("table")).length;
+    const imageCount = allChunks.filter((c) => c.content_types.includes("image")).length;
+    return { textCount, tableCount, imageCount, total: allChunks.length };
+  }, [allChunks]);
 
   return (
     <div className="flex h-full flex-col">
@@ -90,7 +90,7 @@ export default function ChunksPage({ projectName }: Props) {
       </div>
 
       {/* Statistics Banner */}
-      {!isLoading && chunks.length > 0 && (
+      {!isLoading && allChunks.length > 0 && (
         <div className="px-4 sm:px-6 py-3 bg-card/30 border-b border-border flex items-center gap-6 shrink-0">
           <div className="flex items-center gap-2">
             <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { jobsApi } from "@/lib/api";
 import type { Job } from "@/lib/types";
-import { CheckCircle, Circle, AlertCircle, Clock, HelpCircle, Upload, Scissors, Brain, Database, BarChart2, X } from "lucide-react";
+import { CheckCircle, AlertCircle, Clock, HelpCircle, Upload, Scissors, Brain, Database, BarChart2, X } from "lucide-react";
 
 // Maps frontend display steps to backend step names
 const PIPELINE_STEPS = [
@@ -191,7 +191,6 @@ export default function PipelineModal({ jobId, projectName, onClose }: Props) {
             const isCompleted = status === "completed";
             const isRunning = status === "running";
             const isFailed = status === "failed";
-            const isPending = status === "pending";
 
             const details = jobStep?.details ?? {};
             const hasStats = step.statKeys.length > 0 && Object.keys(details).length > 0;

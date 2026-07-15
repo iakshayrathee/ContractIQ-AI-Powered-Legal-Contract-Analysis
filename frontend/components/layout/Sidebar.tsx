@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useProjects } from "@/lib/hooks/useProjectQueries";
-import type { Project } from "@/lib/types";
 import { useEffect, useState } from "react";
 import CreateProjectModal from "@/components/projects/CreateProjectModal";
 import RAGFlowDiagram from "./RAGFlowDiagram";

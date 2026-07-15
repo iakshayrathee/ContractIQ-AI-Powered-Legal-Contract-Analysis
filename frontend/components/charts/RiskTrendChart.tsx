@@ -38,7 +38,7 @@ export default function RiskTrendChart({ data, height = 120 }: Props) {
             borderRadius: "8px",
           }}
           labelStyle={{ color: "#fff" }}
-          formatter={(value: any) => [`${value}`, "Risk Score"]}
+          formatter={(value: string | number | readonly (string | number)[] | undefined) => value !== undefined ? [`${value}`, "Risk Score"] : ["", ""]}
         />
         <Line
           type="monotone"

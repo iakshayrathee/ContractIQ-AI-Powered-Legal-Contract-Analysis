@@ -36,7 +36,7 @@ export default function KnowledgeBaseStats({ project }: Props) {
     <div className="space-y-2">
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-subtle">Stats</p>
       <div className="grid grid-cols-2 gap-2">
-        {STATS.map(({ key, label, icon: Icon, iconColor, iconBg }, _index) => (
+        {STATS.map(({ key, label, icon: Icon, iconColor, iconBg }) => (
           <div key={key} className={`bg-card border border-border rounded-xl p-3 flex items-center gap-2.5 ${key === "documents" ? "col-span-2" : ""}`}>
             <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
               <Icon className={`w-3.5 h-3.5 ${iconColor}`} />

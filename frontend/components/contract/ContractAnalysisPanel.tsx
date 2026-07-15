@@ -41,7 +41,7 @@ const CLAUSE_COLORS: Record<string, string> = {
   warranty: "bg-teal-500/20 text-teal-300 border-teal-500/30",
 };
 
-const CLAUSE_ICONS: Record<string, any> = {
+const CLAUSE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   confidentiality: Lock,
   termination: XCircle,
   indemnification: AlertTriangle,

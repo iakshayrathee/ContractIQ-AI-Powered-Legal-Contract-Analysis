@@ -1,0 +1,83 @@
+# ============================================================
+# ContractIQ — FastAPI Backend
+# ============================================================
+
+# --- API framework ---
+fastapi==0.115.14
+uvicorn==0.35.0
+python-multipart==0.0.20       # Required for UploadFile (multipart form data)
+slowapi==0.1.9                 # Rate limiting middleware
+structlog>=24.0.0              # Structured JSON logging
+
+# --- Config & validation ---
+pydantic==2.11.7
+pydantic-settings==2.10.1
+python-dotenv==1.1.1
+email-validator>=2.1.0             # Required for Pydantic EmailStr validation
+
+# --- JWT Auth ---
+python-jose[cryptography]>=3.3.0   # JWT signing + verification (HS256)
+passlib[bcrypt]>=1.7.4             # Password hashing
+bcrypt>=3.1.7,<4.0.0              # Pin: passlib 1.7.4 incompatible with bcrypt 4+
+
+# --- LangChain ---
+langchain==0.3.27
+langchain-core==0.3.75
+langchain-openai==0.3.32
+langchain-qdrant==0.2.0
+langchain-google-genai>=1.0.0   # Google Gemini via LangChain (LLM_PROVIDER=gemini)
+langgraph>=0.2.0
+
+# --- OpenAI ---
+openai==1.106.1
+
+# --- Vector store ---
+qdrant-client>=1.9.0               # Hybrid search: named vectors + Fusion.RRF
+fastembed>=0.3.0                   # BM25 sparse encoder for hybrid search (model pre-downloaded in Dockerfile)
+flashrank>=0.2.9                   # Local cross-encoder semantic reranker (ms-marco-MiniLM ONNX, no API key)
+
+# --- PostgreSQL ---
+sqlalchemy[asyncio]==2.0.41
+asyncpg==0.31.0
+alembic==1.16.1
+
+# --- LLM Observability ---
+langfuse==2.60.4
+
+# --- Custom document parsing ---
+pymupdf>=1.24.0                # PyMuPDF: PDF page-level text extraction (replaces Unstructured)
+python-docx>=1.1.2             # DOCX parsing
+
+# --- Image processing ---
+pillow==11.3.0
+
+# --- Fine-tuning dependencies ---
+tiktoken==0.8.0
+click==8.1.0
+datasets==3.0.0
+scikit-learn==1.5.0
+
+# ============================================================
+# Open-weight model support (local_lora provider) — NOT included here.
+# Install separately when using LLM_PROVIDER=local_lora:
+#   pip install -r requirements-lora.txt
+#
+# Packages kept out of this file intentionally:
+#   peft, bitsandbytes, transformers (heavy GPU deps, ~2GB)
+#   unsloth, trl, accelerate         (training-only, Colab-specific)
+#
+# Production Docker builds do NOT need these. The local_lora provider
+# performs lazy imports and raises an ImportError with a clear message
+# if requirements-lora.txt has not been installed.
+# ============================================================
+
+# ============================================================
+# System dependencies (install in Docker / CI via apt):
+#   (none required for the custom pipeline)
+#
+# NOT required (removed):
+#   unstructured, unstructured-client  — replaced by custom PyMuPDF pipeline
+#   poppler-utils                      — no longer needed
+#   libmagic1                          — was a dependency of unstructured
+#   tesseract-ocr                      — OCR not used in custom pipeline
+# ============================================================

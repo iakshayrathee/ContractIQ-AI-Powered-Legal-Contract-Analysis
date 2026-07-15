@@ -1,0 +1,87 @@
+{
+  "gpt4o_baseline": {
+    "model_name": "gpt4o_baseline",
+    "model_id": "gpt-4o",
+    "f1": {
+      "f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 5
+    },
+    "per_type_f1": {
+      "termination": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "intellectual_property": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "warranty": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "insurance": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "entire_agreement": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 }
+    },
+    "hallucination": {
+      "mean_overlap": 0.0,
+      "p25_overlap": 0.0,
+      "p75_overlap": 0.0,
+      "p95_overlap": 0.0,
+      "fabrication_rate": 0.0,
+      "fabrications_count": 0
+    },
+    "consistency": { "score": 0.0, "format_compliance": 0.0 },
+    "cost": {
+      "cost_per_chunk": 0.0,
+      "cost_per_document": 0.0,
+      "cost_per_1000_docs": 0.0,
+      "p50_latency_ms": 0.0,
+      "p95_latency_ms": 0.0,
+      "p99_latency_ms": 0.0
+    }
+  },
+  "gpt4o_mini_baseline": {
+    "model_name": "gpt4o_mini_baseline",
+    "model_id": "gpt-4o-mini",
+    "f1": {
+      "f1": 0.0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 5
+    },
+    "per_type_f1": {
+      "termination": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "intellectual_property": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "warranty": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "insurance": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 },
+      "entire_agreement": { "f1": 0.0, "precision": 0.0, "recall": 0.0, "tp": 0, "fp": 0, "fn": 1 }
+    },
+    "hallucination": {
+      "mean_overlap": 0.0,
+      "p25_overlap": 0.0,
+      "p75_overlap": 0.0,
+      "p95_overlap": 0.0,
+      "fabrication_rate": 0.0,
+      "fabrications_count": 0
+    },
+    "consistency": { "score": 0.0, "format_compliance": 0.0 },
+    "cost": {
+      "cost_per_chunk": 0.0,
+      "cost_per_document": 0.0,
+      "cost_per_1000_docs": 0.0,
+      "p50_latency_ms": 0.0,
+      "p95_latency_ms": 0.0,
+      "p99_latency_ms": 0.0
+    }
+  },
+  "lora_llama3": {
+    "_note": "Run evaluator.compare_with_lora('iakshayrathee/contractiq-lora-llama3') to populate this entry with real metrics.",
+    "model_name": "lora_llama3",
+    "model_id": "iakshayrathee/contractiq-lora-llama3",
+    "hf_url": "https://huggingface.co/iakshayrathee/contractiq-lora-llama3",
+    "base_model": "unsloth/Llama-3.2-3B-Instruct",
+    "training_notebook": "notebooks/contractiq_lora_finetune.ipynb",
+    "f1": null,
+    "per_type_f1": null,
+    "avg_latency_ms": null,
+    "meets_f1_threshold": null,
+    "status": "not_evaluated_yet"
+  }
+}

@@ -1,0 +1,70 @@
+# Render deployment configuration for ContractIQ
+# Deploy: https://dashboard.render.com/blueprint/new
+
+services:
+  # FastAPI Backend
+  - type: web
+    name: contractiq-backend
+    runtime: docker
+    plan: standard  # Free plan has memory limits; use Standard for ML workloads
+    dockerfilePath: ./backend/Dockerfile
+    rootDir: backend
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      # CORS - Add your Vercel frontend URL here
+      - key: CORS_ORIGINS
+        value: "http://localhost:3000,http://127.0.0.1:3000"
+      - key: CORS_ALLOW_CREDENTIALS
+        value: "true"
+      - key: CORS_ALLOW_METHODS
+        value: "*"
+      - key: CORS_ALLOW_HEADERS
+        value: "*"
+      # Secrets (set in Render dashboard)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: contractiq-postgres
+          property: connectionString
+      - key: QDRANT_URL
+        fromService:
+          type: pserv
+          name: contractiq-qdrant
+          property: host
+          port: 6333
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+
+  # Qdrant Vector Database
+  - type: pserv
+    name: contractiq-qdrant
+    runtime: docker
+    plan: starter
+    image:
+      url: qdrant/qdrant:latest
+    disk:
+      name: qdrant-storage
+      mountPath: /qdrant/storage
+      sizeGB: 10
+    envVars:
+      - key: QDRANT__SERVICE__HTTP_PORT
+        value: 6333
+      - key: QDRANT__SERVICE__GRPC_PORT
+        value: 6334
+      - key: QDRANT__LOG_LEVEL
+        value: INFO
+
+databases:
+  - name: contractiq-postgres
+    databaseName: contractiq
+    user: contractiq
+    plan: free

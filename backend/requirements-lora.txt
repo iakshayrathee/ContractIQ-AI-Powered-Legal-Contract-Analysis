@@ -1,0 +1,39 @@
+# ============================================================
+# ContractIQ — Open-Weight LoRA Fine-Tuning Dependencies
+# ============================================================
+#
+# Install for LoRA fine-tuning support.
+# NOT required for production deployment.
+#
+# Usage:
+#   pip install -r requirements-lora.txt
+#
+# This file covers two use cases:
+#   1. Training  : Google Colab (unsloth + trl + accelerate)
+#   2. Inference : local machine with GPU (peft + bitsandbytes)
+#
+# For training, use Google Colab with the notebook at:
+#   notebooks/contractiq_lora_finetune.ipynb
+# ============================================================
+
+# --- Core inference dependencies (load adapter, run inference) ---
+# peft and bitsandbytes are the minimum required for load_adapter() in lora_trainer.py
+peft>=0.13.0
+bitsandbytes>=0.43.0        # 4-bit quantization (NF4) for GPU inference
+transformers>=4.45.0        # Required for Llama-3.2 support
+
+# --- Dataset building ---
+datasets>=2.14.0            # HuggingFace datasets (CUAD download + processing)
+
+# --- Training-only (Google Colab / high-VRAM GPU) ---
+# unsloth must be installed via their custom pip index on Colab:
+#   pip install unsloth[colab-new]  (see notebook Section 1)
+# Listing here for documentation; pip install below works on non-Colab CUDA setups.
+unsloth                     # optional, for LoRA training — not needed for inference only
+trl>=0.9.0                  # SFTTrainer (Supervised Fine-Tuning)
+accelerate>=0.33.0          # Multi-GPU + mixed precision training
+
+# --- Note on torch ---
+# torch is NOT pinned here because the correct version depends on your CUDA version.
+# On Colab, torch is pre-installed. Locally, follow:
+#   https://pytorch.org/get-started/locally/

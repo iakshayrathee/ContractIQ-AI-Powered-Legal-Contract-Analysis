@@ -73,3 +73,6 @@ def configure_structlog(log_level: str = "INFO", log_format: str = "json") -> No
     # Quieten noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    # Langfuse SDK logs 404s at ERROR level when a prompt isn't in the remote
+    # registry — these are expected fallbacks, not application errors.
+    logging.getLogger("langfuse").setLevel(logging.CRITICAL)

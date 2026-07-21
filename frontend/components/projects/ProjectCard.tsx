@@ -63,7 +63,7 @@ export default function ProjectCard({ project }: { project: Project }) {
       {/* Left accent stripe */}
       <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${accent.left}`} />
 
-      <Link href={href} className="block p-6">
+      <Link href={href} className="block p-6 pb-4">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="w-10 h-10 rounded-xl bg-surface border border-border flex items-center justify-center shrink-0 shadow-inner group-hover:border-gold/20 group-hover:bg-gold/[0.04] transition-all">
             <FileText className="w-4.5 h-4.5 text-muted group-hover:text-gold transition-colors" />
@@ -77,33 +77,32 @@ export default function ProjectCard({ project }: { project: Project }) {
           {project.name}
         </h3>
         {project.description ? (
-          <p className="text-xs text-muted line-clamp-2 mb-4 leading-relaxed">{project.description}</p>
+          <p className="text-xs text-muted line-clamp-2 mb-3 leading-relaxed">{project.description}</p>
         ) : (
-          <p className="text-xs text-subtle mb-4 italic">No description</p>
+          <p className="text-xs text-subtle mb-3 italic">No description</p>
         )}
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-subtle">
-            <Calendar className="w-3 h-3" />
-            <p className="text-xs">{formatRelativeTime(project.created_at)}</p>
-          </div>
-          <div className="flex items-center gap-1 text-gold opacity-0 group-hover:opacity-100 transition-all text-xs font-semibold">
-            Open
-            <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-          </div>
+        <div className="flex items-center gap-1.5 text-subtle">
+          <Calendar className="w-3 h-3" />
+          <p className="text-xs">{formatRelativeTime(project.created_at)}</p>
         </div>
       </Link>
 
-      {/* Delete button */}
-      <button
-        onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
-        aria-label={`Delete ${project.name}`}
-        className="absolute top-3 right-3 transition-all
-          w-8 h-8 flex items-center justify-center rounded-lg
-          text-subtle hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 z-20"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-      </button>
+      {/* Card footer: Open link + Delete button */}
+      <div className="flex items-center justify-between px-6 py-2.5 border-t border-border/50">
+        <div className="flex items-center gap-1 text-gold opacity-0 group-hover:opacity-100 transition-all text-xs font-semibold">
+          Open
+          <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+        </div>
+        <button
+          onClick={(e) => { e.preventDefault(); setConfirmDelete(true); }}
+          aria-label={`Delete ${project.name}`}
+          className="w-7 h-7 flex items-center justify-center rounded-lg transition-all
+            text-subtle hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
 
       {/* Delete confirmation modal */}
       {confirmDelete && (

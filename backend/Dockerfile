@@ -22,4 +22,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "python -m alembic upgrade heads && uvicorn app.main:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]

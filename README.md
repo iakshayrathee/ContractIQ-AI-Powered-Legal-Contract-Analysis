@@ -8,12 +8,17 @@ An enterprise-ready legal contract analysis platform showcasing modern AI engine
 
 ### Core Technical Achievements
 
-- **Advanced RAG Architecture**: Hybrid search with BM25+Dense vector fusion via Reciprocal Rank Fusion, query caching, and streaming responses
+- **Advanced RAG Architecture**: Hybrid search with BM25+Dense vector fusion via Reciprocal Rank Fusion, FlashRank reranking, query caching, and streaming responses
 - **Production Fine-Tuned Model**: Open-source LoRA adapter ([`iakshayrathee/contractiq-lora-llama3`](https://huggingface.co/iakshayrathee/contractiq-lora-llama3)) trained on 6.7K examples — demonstrates full ML lifecycle from data processing to deployment
 - **Multi-Stage LLM Pipeline**: Two-pass extraction (parallel per-chunk → LLM-based merge) with configurable model routing (OpenAI/Gemini/Local)
+- **Evidence-Grounded Risk Analysis**: Every risk finding carries verbatim source citations (`Evidence` quotes + page/section) with a per-finding confidence score; an evidence-verification pass drops hallucinated high/critical risks before persistence
+- **Deterministic Rule Layer**: Regex + numeric-parsing extractors (liability cap, notice period, auto-renewal opt-out, governing law, indemnity asymmetry) replace brittle keyword matching, feeding a configurable, explainable risk score
+- **Party-Perspective Scoring**: Risk is assessed from a configurable perspective (`neutral` | `customer` | `vendor`) with a persisted feature vector and the exact weights used, so the UI can explain every score
+- **Versioned Prompt Registry**: All pipeline prompts are version-tagged (`chunk_extraction_v1`, `risk_analysis_v2`, `summary_v2`, …) with optional Langfuse hot-swap — every analysis records the prompt versions it used
+- **Progressive Analysis UX**: Clauses → risk → summary are persisted and rendered as each stage completes, with a live stage indicator; the LLM-as-Judge runs off the critical path as a background task
 - **Quality Engineering**: LLM-as-Judge evaluation, input/output guardrails, hallucination detection, and active learning feedback loops
-- **Observability-First**: Structured JSON logging with request tracing, Langfuse integration, and comprehensive evaluation metrics
-- **Custom ML Pipeline**: Ground-up document processing (PyMuPDF/python-docx), semantic chunking with overlap, and multi-modal analysis (text + vision)
+- **Observability-First**: Structured JSON logging with request tracing, Langfuse integration, and comprehensive evaluation metrics (severity-calibration MAE, risk-band accuracy, citation-validity rate)
+- **Custom ML Pipeline**: Ground-up document processing (PyMuPDF/python-docx), semantic chunking with overlap, and multi-modal analysis (text + tables + vision)
 
 ### Key Differentiators
 
@@ -21,6 +26,8 @@ An enterprise-ready legal contract analysis platform showcasing modern AI engine
 |---------|----------------------|-------------------|
 | **Hybrid Search** | Qdrant named vectors with BM25+dense RRF fusion, automatic fallback to dense-only | 30-40% better retrieval vs dense-only, production-tested |
 | **Two-Pass Extraction** | Parallel per-chunk (Pass 1) + LLM merge (Pass 2) | Optimizes for both speed and deduplication |
+| **Evidence Citations** | Verbatim source quotes + confidence per risk, fuzzy-verified against source | Grounded, auditable findings for legal use |
+| **Configurable Risk Scoring** | Env-driven rule/LLM weights + severity values, feature vector persisted | Explainable, tunable, no magic numbers |
 | **Multi-Provider LLM** | Runtime switching: OpenAI/Gemini/Local LoRA | Cost flexibility, privacy options, zero-lock-in |
 | **Fine-Tuning Pipeline** | Full workflow: data → training → eval → deployment | Complete ML lifecycle, HuggingFace Hub integration |
 | **Evaluation Framework** | F1, LLM-as-Judge, regression gates in CI/CD | Automated quality assurance, prevents degradation |
@@ -36,7 +43,7 @@ An enterprise-ready legal contract analysis platform showcasing modern AI engine
 - **Supported Formats**: PDF (PyMuPDF), DOCX (python-docx), multi-modal (text + images)
 - **Deployment**: Docker Compose (4 services), Render.com backend, Vercel frontend
 
-**Version:** 3.2.0 | **Status:** Production-Ready | **Model:** [HuggingFace Hub](https://huggingface.co/iakshayrathee/contractiq-lora-llama3)
+**Version:** 3.3.0 | **Status:** Production-Ready | **Model:** [HuggingFace Hub](https://huggingface.co/iakshayrathee/contractiq-lora-llama3)
 
 ---
 
@@ -63,13 +70,16 @@ An enterprise-ready legal contract analysis platform showcasing modern AI engine
 │  ├─ GPT-4o-mini Vision (image extraction)                               │
 │  └─ Parallel embedding + indexing                                       │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  Two-Pass Contract Analysis                                             │
+│  Two-Pass Contract Analysis (progressive, staged)                       │
 │  ├─ Pass 1: Parallel per-chunk extraction (configurable LLM)           │
 │  ├─ Pass 2: LLM-based merge + deduplication (GPT-4o-mini)              │
-│  └─ Hybrid Risk Scoring (40% rule-based + 60% LLM)                     │
+│  ├─ Evidence retrieval → evidence-grounded LLM risk + verification pass │
+│  ├─ Hybrid Risk Scoring (configurable rule/LLM weights, perspective)    │
+│  └─ Background LLM-as-Judge (off critical path)                         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Advanced RAG Pipeline                                                   │
 │  ├─ Hybrid search: BM25+Dense RRF (Qdrant named vectors)               │
+│  ├─ FlashRank cross-encoder reranking (local ONNX)                      │
 │  ├─ Query caching (SHA-256 based)                                       │
 │  ├─ SSE streaming with source citations                                 │
 │  └─ Query/response persistence                                          │
@@ -180,15 +190,21 @@ npm run dev
 - **Multi-LLM Provider Architecture**: Abstracted LLM interface supporting OpenAI, Google Gemini, and local LoRA models with runtime switching
 - **Production Fine-Tuning Pipeline**: Full LoRA training workflow (data processing → training → evaluation → deployment) with QLoRA optimization for 3B parameter models
 - **Two-Pass Extraction Pattern**: Parallel per-chunk processing followed by LLM-based consolidation — optimizes for accuracy and deduplication
-- **LLM-as-Judge Evaluation**: Automated quality scoring of extraction results with configurable thresholds and review queues
+- **LLM-as-Judge Evaluation**: Automated quality scoring of extraction results with configurable thresholds and review queues — runs off the critical path as a background task, with one bounded judge-informed regeneration when quality is low
+- **Versioned Prompt Registry**: Central catalogue of version-tagged prompts (`app/services/prompts/registry.py`) with optional Langfuse hot-swap; the active version set is recorded per analysis
+- **Progressive Pipeline**: Partial results (clauses → risk → summary) are persisted and rendered as each stage completes, driven by a `stage_json` progress signal on the analysis row
 - **Active Learning System**: Judge-driven feedback loop identifies low-confidence predictions for human review and model improvement
 - **Guardrails Framework**: Input validation and output hallucination detection via source overlap analysis
 
 ### RAG & Retrieval
 - **Advanced RAG Pipeline**: Query caching (SHA-256), streaming responses via SSE, source citation with confidence scores
-- **Multi-Modal Document Processing**: Text extraction + GPT-4o-mini vision for PDF images (configurable)
+- **FlashRank Reranking**: Local ONNX cross-encoder (`ms-marco-MiniLM`) reranks retrieved candidates for ~10-15% MRR@5 improvement, zero API cost
+- **Multi-Modal Document Processing**: Text extraction + table extraction (HTML + markdown) + GPT-4o-mini vision for PDF images (configurable)
 - **Semantic Chunking**: RecursiveCharacterTextSplitter with overlap and metadata preservation (page numbers, chunk indices)
-- **Hybrid Risk Scoring**: Rule-based heuristics (40%) + LLM semantic analysis (60%) for comprehensive risk assessment
+- **Hybrid Risk Scoring**: Deterministic regex/numeric rule layer + evidence-grounded LLM analysis, blended with **configurable** weights (`RISK_RULE_WEIGHT` / `RISK_LLM_WEIGHT`) and severity values — no hard-coded magic numbers
+- **Evidence-Grounded Findings**: Each risk cites verbatim source quotes (with page/section) and a confidence score; a verification pass drops findings whose evidence can't be matched back to the source
+- **Party-Perspective Analysis**: Assess risk as `neutral` / `customer` / `vendor`; the perspective, feature vector, and weights are persisted in the scoring explanation
+- **Adaptive Summaries**: Summary depth (`brief` / `standard` / `detailed`) is derived from contract complexity (clause + risk counts)
 
 ### Production Engineering
 - **Async-First Architecture**: FastAPI with async/await, asyncpg, SQLAlchemy 2.0 async ORM throughout
@@ -432,6 +448,13 @@ ContractIQ/
 │   │   │   ├── job_service.py                 # Background job tracking
 │   │   │   ├── guardrails.py                  # Hallucination detection
 │   │   │   ├── judge_service.py               # LLM-as-Judge quality scoring
+│   │   │   ├── reranker.py                     # FlashRank cross-encoder reranker (ONNX)
+│   │   │   ├── prompts/                        # Versioned prompt registry
+│   │   │   │   ├── registry.py                 # Prompt catalogue + ACTIVE_VERSIONS + Langfuse pull
+│   │   │   │   └── __init__.py
+│   │   │   ├── risk_rules/                     # Deterministic regex/numeric risk extractors
+│   │   │   │   ├── extractors.py               # liability cap, notice period, auto-renewal, etc.
+│   │   │   │   └── __init__.py
 │   │   │   └── __init__.py
 │   │   │
 │   │   ├── schemas/                    # Pydantic models (request/response)
@@ -630,6 +653,18 @@ Copy `.env.example` to `.env`. The backend validates required keys at startup.
 | `JUDGE_ENABLED` | `true` | Enable LLM-as-Judge quality scoring |
 | `JUDGE_QUALITY_THRESHOLD` | `0.7` | Minimum acceptable judge score |
 
+### Risk Scoring (configurable, calibrated)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RISK_RULE_WEIGHT` | `0.4` | Weight for the deterministic rule-layer score (0.0-1.0) |
+| `RISK_LLM_WEIGHT` | `0.6` | Weight for the evidence-grounded LLM score (0.0-1.0) |
+| `RISK_SEVERITY_LOW` | `10` | Score contribution for LOW severity risks |
+| `RISK_SEVERITY_MEDIUM` | `35` | Score contribution for MEDIUM severity risks |
+| `RISK_SEVERITY_HIGH` | `65` | Score contribution for HIGH severity risks |
+| `RISK_SEVERITY_CRITICAL` | `90` | Score contribution for CRITICAL severity risks |
+| `RISK_DEFAULT_PERSPECTIVE` | `neutral` | Default party perspective: `neutral` \| `customer` \| `vendor` |
+
 ### Fine-Tuning Thresholds
 
 | Variable | Default | Description |
@@ -687,7 +722,7 @@ Copy `.env.example` to `.env`. The backend validates required keys at startup.
 | `GET` | `/jobs/{job_id}` | Poll ingestion job status |
 | `POST` | `/query` | SSE streaming RAG chat response |
 | `POST` | `/analysis/stream` | SSE streaming clause analysis (Bearer) |
-| `GET` | `/dashboard/stats` | Aggregate statistics |
+| `GET` | `/dashboard/stats?range=7d\|30d\|90d\|all` | Aggregate statistics with time-range filter, period-over-period trends, activity timeline, quality/flagged counts, and risk-category / contract-type breakdowns |
 
 ### Fine-Tuning Model Registry
 
@@ -874,22 +909,29 @@ A sophisticated **two-pass extraction system** optimized for accuracy, paralleli
 └────────────────────────────────────────────────────────────────┘
                               ↓
 ┌────────────────────────────────────────────────────────────────┐
-│ Hybrid Risk Scoring                                            │
+│ Evidence Retrieval + Hybrid Risk Scoring                       │
 ├────────────────────────────────────────────────────────────────┤
-│ Rule-Based Component (40% weight)                              │
-│   • Missing critical clauses (termination, liability, IP)     │
-│   • No expiration date or auto-renewal without notice         │
-│   • Undefined payment terms                                    │
-│   • Unbalanced obligations (one-sided clauses)                │
-│   • Jurisdiction/governing law conflicts                       │
+│ 0. Evidence Retrieval                                          │
+│   • Multi-probe hybrid retrieval pulls verbatim source spans   │
+│   • Passages fed to the LLM as grounding for every finding     │
 │                                                                 │
-│ LLM Component (60% weight)                                     │
-│   • GPT-4o-mini analyzes full clause list                      │
-│   • Detects: unfavorable terms, compliance gaps, ambiguity    │
-│   • Risk categories: HIGH, MEDIUM, LOW per clause             │
-│   • Generates: risk explanations, mitigation recommendations  │
+│ Deterministic Rule Layer (regex + numeric parsing)             │
+│   • extract_liability_cap  → $ / fee-based cap detection       │
+│   • extract_notice_period  → shortest notice period in days    │
+│   • extract_auto_renewal_terms → opt-out window adequacy       │
+│   • extract_governing_law / extract_indemnity_asymmetry        │
+│   • Missing critical clauses, no-exit, auto-renewal traps      │
 │                                                                 │
-│ Final Score: (rule_score × 0.4) + (llm_score × 0.6)          │
+│ Evidence-Grounded LLM Layer                                    │
+│   • Perspective-aware (neutral | customer | vendor)            │
+│   • Each risk MUST include a verbatim evidence quote           │
+│   • Per-finding confidence (0.0–1.0)                           │
+│   • Evidence-verification pass drops unsupported high/critical │
+│                                                                 │
+│ Configurable Blend (no hard-coded magic numbers)               │
+│   • score = RISK_RULE_WEIGHT·rule + RISK_LLM_WEIGHT·llm         │
+│   • Severity→points map is env-configurable                    │
+│   • Feature vector + weights_used persisted in ScoringExplanation │
 └────────────────────────────────────────────────────────────────┘
                               ↓
 ┌────────────────────────────────────────────────────────────────┐
@@ -900,10 +942,13 @@ A sophisticated **two-pass extraction system** optimized for accuracy, paralleli
 │   • Output hallucination detection via source overlap         │
 │   • Threshold: GUARDRAIL_HALLUCINATION_THRESHOLD=0.25         │
 │                                                                 │
-│ LLM-as-Judge (JUDGE_ENABLED=true)                             │
+│ LLM-as-Judge (JUDGE_ENABLED=true) — background, off critical path │
+│   • Runs AFTER the row is marked completed (user sees results │
+│     immediately); writes quality metadata asynchronously      │
 │   • Quality scoring: completeness, accuracy, relevance        │
 │   • Score range: 0.0-1.0                                       │
 │   • Threshold: JUDGE_QUALITY_THRESHOLD=0.7                    │
+│   • One bounded judge-informed regeneration when below thresh │
 │   • Flags low-confidence extractions for review               │
 │                                                                 │
 │ Active Learning                                                │
@@ -951,15 +996,26 @@ semaphore = asyncio.Semaphore(5)  # Max 5 concurrent extractions
 
 ```json
 {
-  "clause_id": "termination_001",
-  "type": "termination",
-  "risk_level": "HIGH",
-  "risk_score": 0.85,
-  "explanation": "Termination requires 90-day notice but counterparty can terminate immediately for convenience",
-  "rule_based_flags": ["unbalanced_obligations"],
-  "llm_risk_assessment": "One-sided termination rights create business continuity risk"
+  "category": "unfavorable_terms",
+  "severity": "high",
+  "title": "One-sided termination rights",
+  "description": "Termination requires 90-day notice from us but the counterparty can terminate immediately for convenience",
+  "clause_reference": "Termination",
+  "recommendation": "Negotiate a symmetric notice period or a cure window",
+  "confidence": 0.92,
+  "evidence": [
+    {
+      "quote": "Provider may terminate this Agreement immediately for convenience upon written notice",
+      "page_number": 7,
+      "section_reference": "Section 8.2"
+    }
+  ]
 }
 ```
+
+The `RiskReport.scoring_explanation` additionally persists the raw `feature_vector`
+(cap presence, min notice days, one-sided indemnity, missing-clause counts, severity
+counts), the `weights_used`, and the `perspective`, so the UI can fully explain the score.
 
 ### Performance Metrics
 
@@ -1276,11 +1332,17 @@ python scripts/ci_eval.py --threshold 0.8
 | Metric Category | Metrics | Purpose |
 |-----------------|---------|---------|
 | **Accuracy** | F1, Precision, Recall per clause type | Clause classification quality |
+| **Severity Calibration** | Severity MAE (ordinal distance vs `expected_severity`), risk-band accuracy | How well predicted severity/risk band match ground truth |
+| **Citation Validity** | Fraction of high/critical risks with a verifiable evidence quote (fuzzy ≥ 0.8) | Grounding of risk findings |
 | **LLM-as-Judge** | Quality score (0-1), confidence distribution | Semantic correctness evaluation |
 | **Hallucination** | Source overlap ratio, unsupported claims | Grounding verification |
 | **Consistency** | Multi-run agreement, determinism score | Reliability under repeated inference |
 | **Latency** | p50, p95, p99 per endpoint | Performance SLAs |
 | **Cost** | $ per contract, tokens per extraction | Cost optimization tracking |
+
+Eval cases (`contract_eval_cases.json`) now carry `expected_severity`, `expected_risk_level`,
+and `expected_evidence_quotes` fields; the reporter emits Severity MAE (target ≤ 0.5),
+Risk-Band Accuracy (target ≥ 80%), and Citation Validity Rate (target > 95%).
 
 ### Quality Gates (CI/CD)
 
@@ -1484,7 +1546,10 @@ npm run type-check
 | **JWT with httpOnly refresh cookies** | Access tokens in memory prevent XSS theft; httpOnly SameSite=Strict refresh cookies prevent CSRF; industry-standard pattern |
 | **Provider abstraction (`get_analysis_llm`)** | Single entry point for Pass 1 → swap OpenAI ↔ LoRA via one env var, zero service code changes |
 | **Two-pass extraction** | Pass 1 parallelises per-chunk for speed; Pass 2 merges for document-level coherence and deduplication |
-| **Hybrid risk scoring (40/60)** | Rule-based catches structural issues reliably; LLM catches nuanced language; blend provides both reliability and depth |
+| **Hybrid risk scoring (configurable weights)** | Deterministic regex/numeric rule layer catches structural issues reliably; evidence-grounded LLM catches nuanced language; the blend weights and severity values are env-configurable (default 40/60) and the full feature vector is persisted for explainability |
+| **Versioned prompt registry** | Prompts are version-tagged in one catalogue with optional Langfuse hot-swap; every analysis records the versions used, so eval deltas can be attributed to prompt changes and A/B testing is possible without a deploy |
+| **Background LLM-as-Judge** | Judge + bounded regeneration are expensive and not needed for the user-visible result; the row is marked completed once the summary is ready and the judge runs as a fire-and-forget task, removing it from the critical path |
+| **Hash-aware reads + write-time invalidation** | Analyses are keyed to a project + content hash (no per-document FK); reads recompute the corpus hash and hide stale rows, and delete/re-ingest invalidate analyses — so a changed corpus can never surface an old analysis |
 | **SSE streaming** | Token-level streaming for sub-second time-to-first-token on both ingestion and chat |
 | **structlog over stdlib** | JSON lines for production log aggregation (Datadog/CloudWatch); per-request `request_id` binding without thread-local hacks; dev console renderer |
 | **Async throughout** | SQLAlchemy async + asyncpg; `asyncio.gather` for parallel LLM calls; Qdrant async client — no thread pool bottlenecks |
@@ -1508,20 +1573,29 @@ npm run type-check
 - `clauses` (JSON array), `risks` (JSON array), `summary` (JSON)
 - `overall_risk_score` (int, 0–100), `quality_score` (float, 0.0–1.0)
 - `judge_json` (JSON), `guardrail_warnings_json` (JSON)
+- `stage_json` (JSON, nullable) — live pipeline progress while running: `{"stage": "extracting_clauses", "processed": 12, "total": 40}`
+- `document_hash` (SHA-256) — cache key; also used by hash-aware reads to hide stale analyses
 - `flagged_for_review` (bool) — set by LLM-as-Judge if below threshold
 - `created_at`, `completed_at`
 
 ### Clause
 - `id`, `clause_type` (enum: `termination | confidentiality | liability | indemnification | payment | intellectual_property | governing_law | dispute_resolution | force_majeure | data_privacy | warranty | insurance | assignment | amendment | entire_agreement | severability | auto_renewal | non_compete | non_solicitation | other`)
-- `title`, `text`, `section_reference` (nullable)
+- `title`, `text` (full, untruncated), `section_reference` (nullable)
+- `page_number` (int, nullable), `char_span` (`(start, end)`, nullable) — source provenance
 - `obligations` (array): `{party, description, type: must|must_not|may}`
-- `risk_flags` (array)
 
-### Risk Finding
-- `id`, `type` (enum: `missing_clause | unfavorable_term | compliance_gap | ambiguous_language`)
+### Risk Finding (`RiskItem`)
+- `category` (enum: `missing_clause | unfavorable_terms | ambiguous_language | compliance | financial | operational | data_privacy`)
 - `severity` (enum): `low | medium | high | critical`
-- `score` (float, 0–100), `rule_based_score`, `llm_score`
-- `description`, `affected_clauses`, `recommendation`
+- `title`, `description`, `clause_reference` (nullable), `recommendation`
+- `confidence` (float, 0.0–1.0)
+- `evidence` (array of `{quote, page_number, section_reference}`) — verbatim source spans backing the finding
+
+### Scoring Explanation (`ScoringExplanation`)
+- `rule_based_score`, `llm_score`, `combined_score` (int, 0–100)
+- `missing_clause_penalty`, `highest_severity`, `top_contributors`
+- `feature_vector` (dict) — raw scoring features (severity counts, `cap_present`, `min_notice_days`, `one_sided_indemnity`, `auto_renewal_no_notice`, `missing_core_clauses`)
+- `weights_used` (dict), `perspective` (`neutral | customer | vendor`)
 
 ### Model Registry (Fine-Tuning)
 - `id` (UUID), `model_id` (string, unique) — HF Hub ID or OpenAI fine-tuned model ID
@@ -1555,6 +1629,18 @@ npm run type-check
 1. Update model fields in `backend/app/config.py` (e.g., `openai_model_analysis`)
 2. Extend `get_analysis_llm()` in `backend/app/llm/provider.py` if adding a new provider type
 3. Adjust prompt templates if model has different capabilities
+
+### Updating Prompts (Versioned Registry)
+1. Add a new prompt constant in `backend/app/services/prompts/registry.py` (e.g. `RISK_ANALYSIS_V3`)
+2. Register it in `_PROMPT_CATALOGUE` and bump the entry in `ACTIVE_VERSIONS`
+3. Old versions stay in the file so history is preserved; each analysis records the active version set
+4. Optionally publish the prompt in Langfuse to hot-swap without a deploy (`LANGFUSE_ENABLED=true`)
+
+### Adding / Tuning Risk Rules
+1. Add a pure regex/numeric extractor in `backend/app/services/risk_rules/extractors.py` (returns a typed dataclass, no LLM/DB)
+2. Wire it into `_rule_based_risks` / `_compute_risk_report` and add it to the persisted `feature_vector`
+3. Unit-test it in `backend/tests/test_risk_rules.py`
+4. Tune blend weights and severity values via the `RISK_*` env vars — no code change required
 
 ### Adding Observability
 - **Langfuse**: Set `LANGFUSE_ENABLED=true` and provide keys in `.env` — tracing starts automatically for all LLM calls
@@ -1772,7 +1858,7 @@ RUN_LIVE_EVALS=1 pytest tests/test_evaluation.py  # live LLM eval tests
 
 ---
 
-**ContractIQ v3.2.0** | Last updated: June 2026
+**ContractIQ v3.3.0** | Last updated: July 2026
 
 Fine-tuned model: [iakshayrathee/contractiq-lora-llama3](https://huggingface.co/iakshayrathee/contractiq-lora-llama3) (Llama-3.2-3B + QLoRA, trained on CUAD via Google Colab)
 

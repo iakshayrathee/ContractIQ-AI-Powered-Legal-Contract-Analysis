@@ -126,6 +126,12 @@ export interface AnalysisResponse {
   analysis: ContractAnalysis | null;
   risk_report: RiskReport | null;
   summary: PlainSummary | null;
+  /** WS-2.2: pipeline stage for progress display while status="running" */
+  stage?: {
+    stage: "extracting_clauses" | "assessing_risk" | "writing_summary" | "reviewing_quality" | "completed" | "failed";
+    processed?: number;
+    total?: number;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,19 +182,41 @@ export interface SummaryResponse {
 // Dashboard
 // ---------------------------------------------------------------------------
 
+export interface DashboardTrends {
+  projects: number | null;
+  analyses: number | null;
+  risk: number | null;
+}
+
+export interface TimelinePoint {
+  date: string; // ISO date (YYYY-MM-DD)
+  count: number;
+}
+
 export interface DashboardStats {
   total_projects: number;
   total_documents: number;
+  total_analyses: number;
   avg_risk_score: number;
+  high_risk_count: number;
+  flagged_count: number;
+  avg_quality_score: number;
   risk_distribution: Record<string, number>;
   clause_type_counts: Record<string, number>;
+  risk_category_counts: Record<string, number>;
+  contract_type_counts: Record<string, number>;
+  analyses_timeline: TimelinePoint[];
+  trends: DashboardTrends;
   recent_analyses: Array<{
     project_name: string;
     risk_score: number;
     status: string;
     created_at: string;
   }>;
+  range: string;
 }
+
+export type DashboardRange = "7d" | "30d" | "90d" | "all";
 
 export interface ChatMessage {
   id: string;

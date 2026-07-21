@@ -53,6 +53,16 @@ class EvalCase(BaseModel):
         default_factory=list,
         description="Risk titles or categories that are genuinely present."
     )
+    # Phase 0: severity ground-truth for calibration metrics
+    expected_severity: Optional[str] = Field(
+        default=None,
+        description="Expected highest severity level: 'low' | 'medium' | 'high' | 'critical'. Used for severity-MAE metric.",
+    )
+    # Phase 0: expected overall risk band
+    expected_risk_level: Optional[str] = Field(
+        default=None,
+        description="Expected risk band: 'low' | 'medium' | 'high' | 'critical'. Used for band-accuracy metric.",
+    )
     expected_parties: list[str] = Field(
         default_factory=list,
         description="Party names that should appear in the analysis."
@@ -64,6 +74,11 @@ class EvalCase(BaseModel):
     excluded_summary_keywords: list[str] = Field(
         default_factory=list,
         description="Keywords that should NOT appear in the summary (hallucination test)."
+    )
+    # Phase 1: expected evidence quotes (at least one must appear per high/critical risk)
+    expected_evidence_quotes: list[str] = Field(
+        default_factory=list,
+        description="Verbatim phrases that MUST appear as evidence quotes in high/critical risk findings.",
     )
     notes: str = Field(default="", description="Human notes about this test case.")
     source_file: str = Field(default="", description="Original source file name if applicable.")
@@ -114,6 +129,31 @@ class EvalResult(BaseModel):
     risks_extracted: list[str] = Field(default_factory=list)
     risk_recall: float = Field(ge=0.0, le=1.0, default=0.0)
     risk_precision: float = Field(ge=0.0, le=1.0, default=0.0)
+
+    # Phase 0: severity calibration metrics
+    predicted_severity: Optional[str] = Field(
+        default=None,
+        description="Highest severity found in extracted risks.",
+    )
+    predicted_risk_level: Optional[str] = Field(
+        default=None,
+        description="Overall risk band predicted by the pipeline.",
+    )
+    severity_calibration_error: Optional[float] = Field(
+        default=None,
+        description="Absolute ordinal error vs expected_severity (0 = perfect, 3 = max).",
+    )
+    risk_band_correct: Optional[bool] = Field(
+        default=None,
+        description="Whether the predicted risk band matches expected_risk_level.",
+    )
+    # Phase 1: citation validity
+    citation_validity_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of high/critical risks that have at least 1 verifiable evidence quote.",
+    )
 
     # Summary metrics
     summary_contains_keywords: bool = Field(default=False)

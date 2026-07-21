@@ -1,7 +1,7 @@
 # ContractIQ — Technical Design Document
 
-> **Version:** 2.0.0
-> **Last Updated:** January 2025
+> **Version:** 2.1.0
+> **Last Updated:** July 2026
 > **Stack:** FastAPI · Next.js 14 · PostgreSQL · Qdrant · OpenAI GPT-4o · LangChain
 
 ---
@@ -14,6 +14,9 @@
 - **Multi-provider LLM support**: OpenAI GPT-4o, Google Gemini, and fine-tuned LoRA adapters
 - **Advanced retrieval**: Hybrid dense+sparse vector search with FlashRank reranking
 - **Multimodal analysis**: Text, tables, and image extraction with GPT-4o Vision
+- **Evidence-grounded, perspective-aware risk scoring**: deterministic regex/numeric rule layer + LLM layer with verbatim citations, per-finding confidence, and configurable blend weights
+- **Versioned prompt registry**: version-tagged prompts with optional Langfuse hot-swap, recorded per analysis
+- **Progressive analysis UX**: staged partial rendering (clauses → risk → summary) with a background LLM-as-Judge
 - **Quality assurance**: Input/output guardrails and LLM-as-Judge evaluation
 - **Full observability**: Structured logging and Langfuse tracing
 
@@ -101,7 +104,7 @@ AI Legal Contract Analyze/
 │   │   │
 │   │   ├── schemas/              # Pydantic request/response models
 │   │   │   ├── auth.py           # Auth request/response schemas
-│   │   │   ├── contract.py       # ContractAnalysis, Clause, RiskReport, PlainSummary
+│   │   │   ├── contract.py       # ContractAnalysis, Clause, Evidence, RiskItem, RiskReport, ScoringExplanation, PlainSummary, DashboardStats
 │   │   │   ├── judge.py          # LLM-as-Judge evaluation schemas
 │   │   │   ├── project.py        # Project CRUD schemas
 │   │   │   ├── query.py          # Chat message schemas
@@ -115,7 +118,12 @@ AI Legal Contract Analyze/
 │   │   │   ├── project_service.py          # Project management
 │   │   │   ├── job_service.py              # Async job tracking
 │   │   │   ├── guardrails.py               # Input/output validation
-│   │   │   └── judge_service.py            # LLM-as-Judge quality evaluation
+│   │   │   ├── judge_service.py            # LLM-as-Judge quality evaluation
+│   │   │   ├── reranker.py                 # FlashRank cross-encoder reranker (ONNX)
+│   │   │   ├── prompts/                    # Versioned prompt registry
+│   │   │   │   └── registry.py             # Prompt catalogue, ACTIVE_VERSIONS, Langfuse pull
+│   │   │   └── risk_rules/                 # Deterministic regex/numeric risk extractors
+│   │   │       └── extractors.py           # liability cap, notice period, auto-renewal, gov law, indemnity
 │   │   │
 │   │   ├── finetuning/           # LoRA training system
 │   │   │   ├── cli.py            # Click CLI commands
@@ -156,6 +164,7 @@ AI Legal Contract Analyze/
 │   │       ├── add_model_registry_table.py
 │   │       ├── b5c92f3e1a07_add_chat_messages_table.py
 │   │       ├── c1d2e3f4a5b6_add_users_table.py
+│   │       ├── d4e5f6a7b8c9_add_stage_json_to_analyses.py
 │   │       ├── force_user_id.py
 │   │       └── scope_project_uniqueness.py
 │   │
@@ -292,6 +301,7 @@ All configuration is managed via **Pydantic BaseSettings** — environment varia
 | **Database** | `DATABASE_URL` (PostgreSQL + asyncpg) |
 | **Auth** | `JWT_SECRET_KEY`, `JWT_ALGORITHM` (HS256), `JWT_EXPIRE_MINUTES` (60) |
 | **Guardrails** | `GUARDRAILS_ENABLED`, `JUDGE_ENABLED`, `JUDGE_QUALITY_THRESHOLD` (0.7), `GUARDRAIL_HALLUCINATION_THRESHOLD` (0.25) |
+| **Risk Scoring** | `RISK_RULE_WEIGHT` (0.4), `RISK_LLM_WEIGHT` (0.6), `RISK_SEVERITY_LOW/MEDIUM/HIGH/CRITICAL` (10/35/65/90), `RISK_DEFAULT_PERSPECTIVE` (neutral) — configurable, no hard-coded magic numbers |
 | **Observability** | `LANGFUSE_ENABLED`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST` |
 | **LoRA** | `LOCAL_LORA_ADAPTER_PATH` (iakshayrathee/contractiq-lora-llama3), `LOCAL_LORA_MAX_NEW_TOKENS` (512), `LOCAL_LORA_TEMPERATURE` (0.0) |
 
@@ -326,6 +336,7 @@ analyses
 ├── judge_json, guardrail_warnings_json
 ├── quality_score (0.0–1.0, from LLM-as-Judge)
 ├── flagged_for_review
+├── stage_json (nullable — live pipeline progress: {"stage","processed","total"})
 └── created_at / completed_at
 
 chat_messages
@@ -554,14 +565,60 @@ Each chunk is processed concurrently (max 5 parallel calls via `asyncio.Semaphor
 A single LLM call merges all fragments into a unified `ContractAnalysis` object. Deduplicates clauses, resolves conflicting metadata, and produces contract-level output.
 
 **Additional outputs generated:**
-- **Risk Report** — per-clause and contract-level risk scoring (0–100), categorized by `RiskSeverity` (low / medium / high / critical) and `RiskCategory`
-- **Plain-English Summary** — non-legal language summary with party obligations, key dates, and important terms
+- **Risk Report** — evidence-grounded, perspective-aware risk scoring (0–100), categorized by `RiskSeverity` (low / medium / high / critical) and `RiskCategory`
+- **Plain-English Summary** — non-legal language summary with adaptive depth (`brief` / `standard` / `detailed`)
 - **Document hash caching** — SHA-256 of document content; identical documents skip re-analysis
 
 **Provider routing for analysis:**
 - `LLM_PROVIDER=openai` → `gpt-4o-mini` for Pass 1, `gpt-4o-mini` for Pass 2
 - `LLM_PROVIDER=gemini` → Gemini Flash for all passes
 - `LLM_PROVIDER=local_lora` → LoRA adapter for Pass 1, OpenAI for Pass 2
+
+#### Evidence-grounded, perspective-aware risk scoring
+
+Risk scoring is a **hybrid of a deterministic rule layer and an evidence-grounded LLM layer**,
+run concurrently and merged:
+
+- **Rule layer** (`services/risk_rules/extractors.py`): pure regex + numeric-parsing functions
+  (no LLM, no DB) — `extract_liability_cap`, `extract_notice_period`, `extract_auto_renewal_terms`,
+  `extract_governing_law`, `extract_indemnity_asymmetry`. These replace brittle substring keyword
+  checks so rules fire on genuine language (e.g. "shall not exceed $1,000,000", "sixty (60) days
+  written notice", fee-based caps).
+- **LLM layer**: retrieves verbatim source passages (`_retrieve_risk_evidence`) and prompts the
+  LLM (perspective-aware: `neutral` / `customer` / `vendor`) to return risks that **each carry a
+  verbatim `evidence` quote and a `confidence` score**. Risks without a supporting quote are excluded.
+- **Verification pass** (`_verify_risk_evidence`, Phase 5): high/critical risks whose evidence cannot
+  be fuzzy-matched back to the source are dropped or downgraded.
+- **Configurable blend**: `score = RISK_RULE_WEIGHT·rule_score + RISK_LLM_WEIGHT·llm_score`
+  (LLM component is distribution-based: `max·0.6 + avg·0.4`), with severity→points from
+  `RISK_SEVERITY_*`. The `ScoringExplanation` persists the raw `feature_vector`
+  (cap presence, min notice days, one-sided indemnity, missing-clause counts, severity counts),
+  the `weights_used`, and the `perspective` — so the UI can fully explain the score.
+
+#### Versioned prompt registry
+
+All pipeline prompts live in `services/prompts/registry.py` with explicit version tags
+(`chunk_extraction_v1`, `merge_v1`, `risk_analysis_v2`, `summary_v2`, `evidence_verification_v1`,
+`risk_regeneration_v1`, `summary_regeneration_v1`). `ACTIVE_VERSIONS` selects the live version per
+stage; each analysis records the version set it used. When `LANGFUSE_ENABLED=true`, `get_prompt()`
+first attempts a Langfuse pull (hot-swap without deploy) and falls back to the local catalogue.
+
+#### Progressive rendering + background judge
+
+`run_analysis_pipeline_from_row` persists partial results and a `stage_json` progress signal as each
+stage completes (`extracting_clauses` → `assessing_risk` → `writing_summary` → `reviewing_quality`),
+so the polling frontend renders clauses before risk and risk before summary. The row is marked
+`completed` as soon as the summary is ready; the **LLM-as-Judge (plus one bounded judge-informed
+regeneration) then runs as a fire-and-forget background task** that writes `quality_score` /
+`flagged_for_review` afterward — removing the judge from the user-visible critical path.
+
+#### Stale-analysis correctness
+
+Analyses are keyed to a project + a content hash (there is no per-document FK). `get_analysis` is
+**hash-aware**: it recomputes the current corpus hash and returns `None` (→ `status="none"`) when it
+diverges from the stored `document_hash` or the corpus is empty. Document delete and successful
+re-ingestion both call `invalidate_analyses(project_id)`. When the last document is removed, chat
+history is cleared; otherwise it is preserved.
 
 ---
 
@@ -596,7 +653,8 @@ A thin abstraction layer routes to the correct LLM backend based on `LLM_PROVIDE
 
 ### LLM-as-Judge (`services/judge_service.py`)
 
-After each analysis, a separate `gpt-4o-mini` instance evaluates the output quality across 5 dimensions:
+After each analysis completes (as a **background task, off the user-visible critical path**), a
+separate `gpt-4o-mini` instance evaluates the output quality across 5 dimensions:
 
 | Dimension | Score Range | Measures |
 |---|---|---|
@@ -606,7 +664,7 @@ After each analysis, a separate `gpt-4o-mini` instance evaluates the output qual
 | Summary Faithfulness | 0.0 – 1.0 | Summary accurately represents contract? |
 | Summary Completeness | 0.0 – 1.0 | All significant aspects covered? |
 
-**Flagging:** If overall `quality_score < JUDGE_QUALITY_THRESHOLD` (0.7), `flagged_for_review=True` is set on the analysis row.
+**Flagging:** If overall `quality_score < JUDGE_QUALITY_THRESHOLD` (0.7), `flagged_for_review=True` is set on the analysis row, and one bounded judge-informed regeneration of the risk/summary output is attempted.
 
 ---
 
@@ -669,7 +727,7 @@ Supports training and evaluating a custom **QLoRA adapter** on top of **Llama-3.
 | `routes/ingestion.py` | `/projects/{name}` | Ingestion | upload document, list chunks |
 | `routes/contracts.py` | `/projects/{name}` | Contracts | trigger analysis, get analysis/risk/summary |
 | `routes/query.py` | `/projects/{name}` | Query | RAG chat (streaming SSE) |
-| `routes/dashboard.py` | `/dashboard` | Dashboard | aggregated stats |
+| `routes/dashboard.py` | `/dashboard` | Dashboard | aggregated stats + `?range=` filter (7d/30d/90d/all), period-over-period trends, activity timeline, quality/flagged counts, risk-category & contract-type breakdowns |
 | `routes/analysis.py` | `/analysis` | Analysis | cross-project analysis |
 | `routes/jobs.py` | `/jobs` | Jobs | background job status |
 | `routes/finetuning.py` | `/finetuning` | Fine-tuning | train, evaluate, list models |
@@ -1237,16 +1295,16 @@ pip install -r backend/requirements-lora.txt
 
 ---
 
-*Document generated from codebase analysis of ContractIQ v2.0.0*
+*Document generated from codebase analysis of ContractIQ v2.1.0*
 
 
 ---
 
 ## 📚 Summary & Future Roadmap
 
-### Current State (v2.0.0)
+### Current State (v2.1.0)
 
-ContractIQ v2.0.0 represents a mature, production-ready AI legal contract analysis platform with:
+ContractIQ v2.1.0 represents a mature, production-ready AI legal contract analysis platform with:
 
 ✅ **Core capabilities:**
 - PDF/DOCX ingestion with multimodal support (text, tables, images)
@@ -1270,6 +1328,12 @@ ContractIQ v2.0.0 represents a mature, production-ready AI legal contract analys
 - Contextual embedding for improved retrieval
 - Top-level metadata fields for efficient filtering
 - Model registry and evaluation framework
+- Evidence-grounded, perspective-aware risk scoring with configurable weights and a persisted feature vector
+- Versioned prompt registry with optional Langfuse hot-swap
+- Progressive/staged analysis rendering with a background LLM-as-Judge
+- Hash-aware stale-analysis invalidation and multi-document shared-corpus support
+- Dashboard time-range filtering with real period-over-period trends and activity timeline
+- Extended eval metrics: severity-calibration MAE, risk-band accuracy, citation-validity rate
 
 ### Performance Benchmarks
 
@@ -1352,5 +1416,5 @@ Contributions are welcome! Key areas for contribution:
 
 ---
 
-*Document version 2.0.0 — Last updated January 2025*  
+*Document version 2.1.0 — Last updated July 2026*  
 *For questions or support, see the project README or open a GitHub issue.*

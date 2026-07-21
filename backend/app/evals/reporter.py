@@ -58,6 +58,17 @@ class MetricsReporter:
             "total_hallucinations": sum(r.hallucination_count for r in valid),
             "total_missing_clauses": sum(r.missing_clause_count for r in valid),
             "guardrail_pass_rate": sum(1 for r in valid if r.guardrail_passed) / len(valid),
+            # Phase 0 metrics
+            "avg_severity_mae": (
+                sum(r.severity_calibration_error for r in valid if r.severity_calibration_error is not None)
+                / max(1, sum(1 for r in valid if r.severity_calibration_error is not None))
+            ),
+            "risk_band_accuracy": (
+                sum(1 for r in valid if r.risk_band_correct)
+                / max(1, sum(1 for r in valid if r.risk_band_correct is not None))
+            ),
+            # Phase 1 metrics
+            "avg_citation_validity_rate": sum(r.citation_validity_rate for r in valid) / len(valid),
         }
 
     def _get_grade(self, score: float) -> str:
@@ -108,18 +119,33 @@ class MetricsReporter:
             f"- **Total Missing Clauses:** {agg['total_missing_clauses']}",
             f"- **Failed Runs:** {agg['failed_count']}",
             "",
+            "## Phase 0 — Severity & Risk-Band Calibration",
+            "",
+            f"| Metric | Value | Target |",
+            f"|--------|-------|--------|",
+            f"| Severity MAE | {agg.get('avg_severity_mae', 0):.3f} | ≤ 0.5 |",
+            f"| Risk Band Accuracy | {agg.get('risk_band_accuracy', 0):.1%} | ≥ 80% |",
+            "",
+            "## Phase 1 — Citation Validity",
+            "",
+            f"| Metric | Value | Target |",
+            f"|--------|-------|--------|",
+            f"| Citation Validity Rate | {agg.get('avg_citation_validity_rate', 1.0):.1%} | > 95% |",
+            "",
             "## Per-Case Breakdown",
             "",
-            "| Case | Passed | Judge | F1 | Hallucinations |",
-            "|------|--------|-------|-----|----------------|",
+            "| Case | Passed | Judge | F1 | Sev MAE | Citation% | Hallucinations |",
+            "|------|--------|-------|-----|---------|-----------|----------------|",
         ]
 
         for r in self.results:
             status = "✅" if r.passed else "❌"
             judge = f"{r.judge_overall:.2f}" if r.judge_overall > 0 else "N/A"
             f1 = f"{r.clause_f1:.2f}"
+            sev_mae = f"{r.severity_calibration_error:.1f}" if r.severity_calibration_error is not None else "-"
+            citation = f"{r.citation_validity_rate:.0%}"
             hall = str(r.hallucination_count) if r.hallucination_count > 0 else "-"
-            lines.append(f"| {r.case_id} | {status} | {judge} | {f1} | {hall} |")
+            lines.append(f"| {r.case_id} | {status} | {judge} | {f1} | {sev_mae} | {citation} | {hall} |")
 
         lines.extend([
             "",

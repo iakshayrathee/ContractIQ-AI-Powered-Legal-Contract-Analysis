@@ -24,6 +24,9 @@ import {
   EyeOff,
   ShieldCheck,
   HelpCircle,
+  CheckCircle2,
+  Circle,
+  Loader2,
 } from "lucide-react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useState } from "react";
@@ -53,6 +56,61 @@ const CLAUSE_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   non_compete: Eye,
   warranty: ShieldCheck,
 };
+
+// Pipeline step definitions for the progress indicator (WS-2.4)
+const PIPELINE_STEPS = [
+  { key: "extracting_clauses", label: "Extracting clauses" },
+  { key: "assessing_risk",     label: "Assessing risk" },
+  { key: "writing_summary",    label: "Writing summary" },
+  { key: "reviewing_quality",  label: "Reviewing quality" },
+] as const;
+
+type StageKey = typeof PIPELINE_STEPS[number]["key"] | "completed" | "failed";
+
+interface StageIndicatorProps {
+  stage: { stage: StageKey; processed?: number; total?: number } | null | undefined;
+}
+
+function StageIndicator({ stage }: StageIndicatorProps) {
+  const currentIdx = stage
+    ? PIPELINE_STEPS.findIndex((s) => s.key === stage.stage)
+    : -1;
+
+  return (
+    <div className="flex flex-col gap-3 w-full">
+      {PIPELINE_STEPS.map((step, idx) => {
+        const isDone    = currentIdx > idx;
+        const isActive  = currentIdx === idx;
+
+        return (
+          <div key={step.key} className="flex items-center gap-3">
+            <div className="shrink-0 w-5 h-5 flex items-center justify-center">
+              {isDone ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              ) : isActive ? (
+                <Loader2 className="w-4 h-4 text-gold animate-spin" />
+              ) : (
+                <Circle className="w-4 h-4 text-white/20" />
+              )}
+            </div>
+            <span
+              className={`text-sm ${
+                isDone   ? "text-emerald-400" :
+                isActive ? "text-gold font-medium" :
+                           "text-white/30"
+              }`}
+            >
+              {step.label}
+              {isActive && step.key === "extracting_clauses" && stage?.total
+                ? ` ${stage.processed ?? 0}/${stage.total}`
+                : ""}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ClauseCard({ clause }: { clause: ContractClause }) {
   const [expanded, setExpanded] = useState(false);
@@ -144,6 +202,7 @@ export default function ContractAnalysisPanel({ project }: Props) {
   const { data: analysisData, isLoading } = useAnalysis(project.name, project.document_count > 0);
 
   const status = analysisData?.status ?? "none";
+  const stage = analysisData?.stage as StageIndicatorProps["stage"] | undefined;
 
   // Analysis hook handles polling automatically - no manual effect needed
 
@@ -196,12 +255,55 @@ export default function ContractAnalysisPanel({ project }: Props) {
         )}
 
         {status === "running" && (
-          <div className="flex items-center gap-4 p-5 bg-gold/[0.05] border border-gold/20 rounded-xl">
-            <Spinner />
-            <div>
-              <p className="text-sm font-semibold text-gold">Analysis in progress</p>
-              <p className="text-xs text-muted mt-0.5">Extracting clauses, metadata, and analyzing risks…</p>
+          <div className="space-y-5">
+            {/* Step indicator */}
+            <div className="p-5 bg-gold/[0.05] border border-gold/20 rounded-xl">
+              <div className="flex items-center gap-3 mb-4">
+                <Spinner />
+                <div>
+                  <p className="text-sm font-semibold text-gold">Analysis in progress</p>
+                  <p className="text-xs text-muted mt-0.5">Results appear as each stage completes</p>
+                </div>
+              </div>
+              <StageIndicator stage={stage} />
             </div>
+
+            {/* WS-2.3: Render partial results as they arrive while still running */}
+            {analysis && (
+              <div className="space-y-6 opacity-90">
+                {/* Metadata */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { icon: Scale, color: "text-gold", bg: "bg-gold/10", border: "border-gold/20", label: "Contract Type", value: analysis.metadata.contract_type },
+                    { icon: Users, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", label: "Parties", value: analysis.metadata.parties.join(", ") || "Unknown" },
+                  ].map(({ icon: Icon, color, bg, border, label, value }) => (
+                    <div key={label} className={`bg-card border ${border} rounded-xl p-4 shadow-card gold-border-left`}>
+                      <div className="flex items-center gap-2 mb-2.5">
+                        <div className={`w-6 h-6 rounded-lg ${bg} flex items-center justify-center`}>
+                          <Icon className={`w-3 h-3 ${color}`} />
+                        </div>
+                        <span className="text-xs font-semibold uppercase tracking-[0.1em] text-subtle">{label}</span>
+                      </div>
+                      <p className="text-sm text-white font-medium capitalize">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Partial clauses */}
+                {analysis.clauses && analysis.clauses.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-subtle mb-3">
+                      Clauses found so far ({analysis.clauses.length})
+                    </p>
+                    <div className="space-y-2">
+                      {analysis.clauses.filter((c) => !typeFilter || c.clause_type === typeFilter).map((clause, i) => (
+                        <ClauseCard key={i} clause={clause} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -221,6 +323,14 @@ export default function ContractAnalysisPanel({ project }: Props) {
 
         {status === "completed" && analysis && (
           <div className="space-y-6">
+            {/* Multi-document coverage notice (WS-3.4) */}
+            {project.document_count > 1 && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/[0.08] border border-blue-500/20 text-xs text-blue-300">
+                <Shield className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                Analysis covers all {project.document_count} uploaded documents as a combined corpus.
+              </div>
+            )}
+
             {/* Metadata */}
             <div className="grid grid-cols-2 gap-3">
               {[

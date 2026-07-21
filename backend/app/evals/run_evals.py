@@ -40,11 +40,95 @@ def _normalize_clause_type(clause_type_str: str) -> str:
     return ct
 
 
-def _compute_clause_metrics(
-    extracted_clauses: list[str],
-    expected_clauses: list[str],
-    unexpected_clauses: list[str],
-) -> tuple[list[str], list[str], list[str], float, float, float]:
+def _compute_severity_calibration_error(
+    predicted_risks: list,
+    expected_severity: Optional[str],
+) -> Optional[float]:
+    """
+    Phase 0: severity-calibration MAE.
+
+    Computes the absolute ordinal difference between the predicted highest severity
+    and the ground-truth expected_severity. Returns None if no ground truth available.
+    Scale: 0 = perfect, 3 = maximum (e.g. predicted LOW vs actual CRITICAL).
+    """
+    from app.schemas.contract import RiskSeverity, SEVERITY_ORDINAL
+
+    if not expected_severity:
+        return None
+
+    if not predicted_risks:
+        # Predicted nothing → worst case MAE against the expected
+        try:
+            expected_ord = SEVERITY_ORDINAL[RiskSeverity(expected_severity)]
+        except (ValueError, KeyError):
+            return None
+        return float(expected_ord - 1)  # distance from "low" (ordinal 1)
+
+    # Find highest predicted severity
+    highest_predicted = max(
+        (r.severity if hasattr(r, "severity") else RiskSeverity(r) for r in predicted_risks),
+        key=lambda s: SEVERITY_ORDINAL.get(s if isinstance(s, RiskSeverity) else RiskSeverity(s), 0),
+        default=None,
+    )
+    if highest_predicted is None:
+        return None
+
+    try:
+        pred_ord = SEVERITY_ORDINAL[highest_predicted if isinstance(highest_predicted, RiskSeverity)
+                                    else RiskSeverity(highest_predicted)]
+        exp_ord  = SEVERITY_ORDINAL[RiskSeverity(expected_severity)]
+        return float(abs(pred_ord - exp_ord))
+    except (ValueError, KeyError):
+        return None
+
+
+def _compute_citation_validity_rate(
+    risk_items: list,
+    source_text: str,
+    min_overlap: float = 0.8,
+) -> float:
+    """
+    Phase 1: citation-validity rate.
+
+    For each HIGH/CRITICAL risk, checks that at least one evidence quote is found
+    (fuzzy substring match with overlap >= min_overlap) in the source text.
+    Returns fraction of high/critical risks that have a valid citation.
+    """
+    import re
+
+    from app.schemas.contract import RiskSeverity
+
+    high_critical = [
+        r for r in risk_items
+        if hasattr(r, "severity") and r.severity in (RiskSeverity.HIGH, RiskSeverity.CRITICAL)
+    ]
+    if not high_critical:
+        return 1.0  # no high/critical risks to validate
+
+    source_lower = source_text.lower()
+    valid = 0
+    for risk in high_critical:
+        evidence = getattr(risk, "evidence", [])
+        if not evidence:
+            continue
+        found_valid = False
+        for ev in evidence:
+            quote = getattr(ev, "quote", "") or ""
+            if not quote:
+                continue
+            # Sliding-window word overlap check
+            quote_words = set(re.findall(r"\b[a-z]{3,}\b", quote.lower()))
+            if not quote_words:
+                continue
+            source_words = set(re.findall(r"\b[a-z]{3,}\b", source_lower))
+            overlap = len(quote_words & source_words) / len(quote_words)
+            if overlap >= min_overlap:
+                found_valid = True
+                break
+        if found_valid:
+            valid += 1
+
+    return valid / len(high_critical)
     """
     Compute clause extraction metrics for a single eval case.
 
@@ -175,6 +259,32 @@ async def run_single_eval(
         risk_titles = [r.title.lower() for r in risk_report.items]
         risk_recall, risk_precision = _compute_risk_metrics(risk_titles, case.expected_risks)
 
+        # Phase 0: severity calibration
+        sev_mae = _compute_severity_calibration_error(
+            risk_report.items, case.expected_severity
+        )
+        risk_band_correct: Optional[bool] = None
+        if case.expected_risk_level:
+            risk_band_correct = (risk_report.risk_level == case.expected_risk_level)
+
+        # Phase 1: citation validity rate
+        citation_validity = _compute_citation_validity_rate(
+            risk_report.items, case.source_text
+        )
+
+        # Predicted severity / band for reporting
+        from app.schemas.contract import RiskSeverity
+        predicted_severity: Optional[str] = None
+        if risk_report.items:
+            from app.schemas.contract import SEVERITY_ORDINAL
+            highest = max(
+                risk_report.items,
+                key=lambda r: SEVERITY_ORDINAL.get(r.severity, 0),
+                default=None,
+            )
+            if highest:
+                predicted_severity = highest.severity.value
+
         # Summary metrics
         summary_text = plain_summary.executive_summary + " " + plain_summary.what_this_does
         sum_contains, sum_has_excluded, sum_kw_ratio = _compute_summary_metrics(
@@ -280,6 +390,13 @@ async def run_single_eval(
             risks_extracted=risk_titles,
             risk_recall=risk_recall,
             risk_precision=risk_precision,
+            # Phase 0: severity calibration + band accuracy
+            predicted_severity=predicted_severity,
+            predicted_risk_level=risk_report.risk_level,
+            severity_calibration_error=sev_mae,
+            risk_band_correct=risk_band_correct,
+            # Phase 1: citation validity
+            citation_validity_rate=citation_validity,
             # Summary metrics
             summary_contains_keywords=sum_contains,
             summary_has_excluded_keywords=sum_has_excluded,
@@ -375,6 +492,19 @@ def aggregate_results(results: list[EvalResult]) -> dict:
     hallucination_total = sum(r.hallucination_count for r in valid_results)
     missing_clause_total = sum(r.missing_clause_count for r in valid_results)
 
+    # Phase 0: new metrics
+    sev_errors = [r.severity_calibration_error for r in valid_results if r.severity_calibration_error is not None]
+    avg_severity_mae = sum(sev_errors) / len(sev_errors) if sev_errors else None
+
+    band_results = [r.risk_band_correct for r in valid_results if r.risk_band_correct is not None]
+    risk_band_accuracy = sum(band_results) / len(band_results) if band_results else None
+
+    # Phase 1: citation validity
+    avg_citation_validity = (
+        sum(r.citation_validity_rate for r in valid_results) / len(valid_results)
+        if valid_results else 1.0
+    )
+
     # Per-contract-type breakdown
     by_contract_type: dict[str, dict] = {}
     for result in valid_results:
@@ -417,20 +547,21 @@ def aggregate_results(results: list[EvalResult]) -> dict:
         "passed": passed,
         "failed": failed,
         "pass_rate": passed / total if total > 0 else 0.0,
-        # Average metrics
         "avg_judge_overall": round(avg_judge_overall, 3),
         "avg_clause_recall": round(avg_clause_recall, 3),
         "avg_clause_precision": round(avg_clause_precision, 3),
         "avg_clause_f1": round(avg_clause_f1, 3),
         "avg_risk_recall": round(avg_risk_recall, 3),
         "avg_guardrail_confidence": round(avg_guardrail_confidence, 3),
-        # Totals
         "total_hallucinations": hallucination_total,
         "total_missing_clauses": missing_clause_total,
-        # Breakdowns
+        # Phase 0 metrics
+        "avg_severity_mae": round(avg_severity_mae, 3) if avg_severity_mae is not None else None,
+        "risk_band_accuracy": round(risk_band_accuracy, 3) if risk_band_accuracy is not None else None,
+        # Phase 1 metrics
+        "avg_citation_validity_rate": round(avg_citation_validity, 3),
         "by_contract_type": by_contract_type,
         "by_difficulty": by_difficulty,
-        # Quality flags
         "has_low_judge_scores": avg_judge_overall < JUDGE_SCORE_THRESHOLD,
         "has_poor_clause_recall": avg_clause_recall < CLAUSE_RECALL_THRESHOLD,
         "has_poor_clause_precision": avg_clause_precision < CLAUSE_PRECISION_THRESHOLD,

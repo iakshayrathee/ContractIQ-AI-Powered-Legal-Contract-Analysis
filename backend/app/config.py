@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     judge_quality_threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="Minimum acceptable judge score")
     guardrail_hallucination_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
 
+    # --- Risk scoring weights (Phase 4: configurable, not hard-coded) ---
+    # These replace the previously magic-number literals in _compute_risk_report.
+    # Rule component weight (deterministic checks).
+    risk_rule_weight: float = Field(default=0.4, ge=0.0, le=1.0, description="Weight for rule-based risk score (env: RISK_RULE_WEIGHT)")
+    # LLM component weight (evidence-grounded LLM checks).
+    risk_llm_weight: float = Field(default=0.6, ge=0.0, le=1.0, description="Weight for LLM risk score (env: RISK_LLM_WEIGHT)")
+    # Severity-to-score mapping (ordinal → numeric contribution)
+    risk_severity_low: int = Field(default=10, ge=0, le=100, description="Score value for LOW severity risks (env: RISK_SEVERITY_LOW)")
+    risk_severity_medium: int = Field(default=35, ge=0, le=100, description="Score value for MEDIUM severity risks (env: RISK_SEVERITY_MEDIUM)")
+    risk_severity_high: int = Field(default=65, ge=0, le=100, description="Score value for HIGH severity risks (env: RISK_SEVERITY_HIGH)")
+    risk_severity_critical: int = Field(default=90, ge=0, le=100, description="Score value for CRITICAL severity risks (env: RISK_SEVERITY_CRITICAL)")
+    # Default perspective for risk analysis
+    risk_default_perspective: str = Field(default="neutral", description="Default party perspective: 'neutral' | 'customer' | 'vendor' (env: RISK_DEFAULT_PERSPECTIVE)")
+
     # --- Open-weight LoRA inference (local_lora provider) ---
     # Requires: pip install -r backend/requirements-lora.txt
     # These settings are only read when LLM_PROVIDER=local_lora.

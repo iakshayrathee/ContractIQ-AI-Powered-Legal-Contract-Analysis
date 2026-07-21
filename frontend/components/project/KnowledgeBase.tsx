@@ -9,8 +9,10 @@ import UploadArea from "./UploadArea";
 import PipelineModal from "./PipelineModal";
 import KnowledgeBaseStats from "./KnowledgeBaseStats";
 import Link from "next/link";
-import { Layers, FileText, Trash2 } from "lucide-react";
+import { Layers, FileText, Trash2, AlertTriangle } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 
 interface Props {
   project: Project;
@@ -18,6 +20,7 @@ interface Props {
 
 export default function KnowledgeBase({ project }: Props) {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -33,9 +36,18 @@ export default function KnowledgeBase({ project }: Props) {
       qc.invalidateQueries({ queryKey: ["documents", project.name] });
       qc.invalidateQueries({ queryKey: ["project", project.name] });
       qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["chunkStats", project.name] });
+      // WS-1.4: corpus changed — clear the analysis cache so the panel shows "no analysis"
+      qc.invalidateQueries({ queryKey: ["analysis", project.name] });
+      qc.invalidateQueries({ queryKey: ["risks", project.name] });
+      qc.invalidateQueries({ queryKey: ["summary", project.name] });
+      // Chat history is cleared server-side on delete — refresh the chat panel too
+      qc.invalidateQueries({ queryKey: ["chat", project.name] });
+      setPendingDelete(null);
     },
     onError: (err: Error) => {
       toast(`Delete failed: ${err.message}`, "error");
+      setPendingDelete(null);
     },
   });
 
@@ -79,11 +91,7 @@ export default function KnowledgeBase({ project }: Props) {
                     </p>
                   </div>
                   <button
-                    onClick={() => {
-                      if (confirm(`Delete "${doc.filename}"?`)) {
-                        deleteMutation.mutate(doc.filename);
-                      }
-                    }}
+                    onClick={() => setPendingDelete(doc.filename)}
                     disabled={deleteMutation.isPending}
                     className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity
                       hover:bg-red-500/10 hover:text-red-400 text-muted disabled:opacity-50"
@@ -100,11 +108,16 @@ export default function KnowledgeBase({ project }: Props) {
         {/* Upload */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-[0.1em] text-subtle">Upload</p>
+          <p className="text-[10px] text-muted leading-relaxed">
+            All uploaded documents are analyzed together as a single corpus.
+            Add multiple files to build shared context for chat and analysis.
+          </p>
           <UploadArea
             projectName={project.name}
             onJobStarted={(jobId) => {
               setActiveJobId(jobId);
               qc.invalidateQueries({ queryKey: ["project", project.name] });
+              qc.invalidateQueries({ queryKey: ["projects"] });
               qc.invalidateQueries({ queryKey: ["documents", project.name] });
             }}
           />
@@ -130,15 +143,107 @@ export default function KnowledgeBase({ project }: Props) {
         )}
       </div>
 
+      {/* Delete confirmation modal */}
+      <Modal
+        open={pendingDelete !== null}
+        onClose={() => {
+          if (!deleteMutation.isPending) setPendingDelete(null);
+        }}
+        title="Delete document"
+      >
+        {(() => {
+          // isLastDocument: deleting this removes the entire corpus.
+          const isLastDocument = documents.length <= 1;
+          return (
+            <div className="space-y-4">
+              <div className="flex items-start gap-3 p-3.5 rounded-xl bg-red-500/[0.06] border border-red-500/20">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="space-y-1.5">
+                  <p className="text-sm text-white">
+                    Delete <span className="font-semibold break-all">&ldquo;{pendingDelete}&rdquo;</span>?
+                  </p>
+
+                  {isLastDocument ? (
+                    <>
+                      <p className="text-xs text-muted leading-relaxed">
+                        This is the last document in the project. Removing it empties the
+                        knowledge base, so the following will also be cleared:
+                      </p>
+                      <ul className="text-xs text-muted list-disc list-inside space-y-0.5">
+                        <li>The contract analysis, risks, and summary</li>
+                        <li>All chat history and Q&amp;A for this project</li>
+                      </ul>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted leading-relaxed">
+                        Analysis covers all documents together, so removing this one from the
+                        corpus will:
+                      </p>
+                      <ul className="text-xs text-muted list-disc list-inside space-y-0.5">
+                        <li>Reset the current analysis — re-run it over the remaining {documents.length - 1} document{documents.length - 1 !== 1 ? "s" : ""}</li>
+                        <li>Keep your chat history (still supported by the remaining documents)</li>
+                      </ul>
+                    </>
+                  )}
+
+                  <p className="text-xs text-muted leading-relaxed">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPendingDelete(null)}
+                  disabled={deleteMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  loading={deleteMutation.isPending}
+                  onClick={() => {
+                    if (pendingDelete) deleteMutation.mutate(pendingDelete);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete document
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
       {/* Pipeline modal */}
       <PipelineModal
         jobId={activeJobId}
         projectName={project.name}
+        onComplete={() => {
+          // Invalidate stats as soon as the job finishes (before user closes modal)
+          qc.invalidateQueries({ queryKey: ["chunkStats", project.name] });
+          qc.invalidateQueries({ queryKey: ["project", project.name] });
+          qc.invalidateQueries({ queryKey: ["projects"] });
+          qc.invalidateQueries({ queryKey: ["documents", project.name] });
+          // WS-1.5: new document ingested — clear stale analysis cache
+          qc.invalidateQueries({ queryKey: ["analysis", project.name] });
+          qc.invalidateQueries({ queryKey: ["risks", project.name] });
+          qc.invalidateQueries({ queryKey: ["summary", project.name] });
+        }}
         onClose={() => {
           setActiveJobId(null);
           qc.invalidateQueries({ queryKey: ["project", project.name] });
           qc.invalidateQueries({ queryKey: ["projects"] });
           qc.invalidateQueries({ queryKey: ["documents", project.name] });
+          qc.invalidateQueries({ queryKey: ["chunkStats", project.name] });
+          // WS-1.5: also invalidate on modal close in case onComplete was missed
+          qc.invalidateQueries({ queryKey: ["analysis", project.name] });
+          qc.invalidateQueries({ queryKey: ["risks", project.name] });
+          qc.invalidateQueries({ queryKey: ["summary", project.name] });
         }}
       />
     </div>

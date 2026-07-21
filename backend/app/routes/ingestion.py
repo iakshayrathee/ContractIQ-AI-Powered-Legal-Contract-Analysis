@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, stat
 
 from app.auth.dependencies import get_current_user
 from app.schemas.responses import IngestJobResponse
+from app.services.contract_analysis_service import ContractAnalysisService
 from app.services.ingestion_service import IngestionService
 from app.services.job_service import JobService
 from app.services.project_service import ProjectService
@@ -40,9 +41,11 @@ async def _run_ingestion_background(
     source_file: str,
     collection_name: str,
     overwrite: bool,
+    project_id: str,
     ingestion_service: IngestionService,
     vector_store_service: VectorStoreService,
     job_service: JobService,
+    contract_analysis_service: ContractAnalysisService,
 ) -> None:
     """
     Background coroutine: runs the full 4-stage pipeline and updates job status.
@@ -103,6 +106,11 @@ async def _run_ingestion_background(
         job_service.complete_job(job_id, len(documents))
         logger.info("Background ingestion job %s completed (%d docs).", job_id, len(documents))
 
+        # WS-1.3: corpus has changed — invalidate stale analyses so next GET
+        # returns status="none" and the user is prompted to re-analyze.
+        await contract_analysis_service.invalidate_analyses(project_id)
+        logger.info("Ingestion job %s: analyses invalidated for project_id=%s", job_id, project_id)
+
     except Exception as exc:
         logger.error("Background ingestion job %s failed: %s", job_id, exc, exc_info=True)
         job_service.fail_job(job_id, str(exc))
@@ -155,6 +163,7 @@ async def ingest_document(
     job_service: JobService = request.app.state.job_service
     ingestion_service: IngestionService = request.app.state.ingestion_service
     vector_store_service: VectorStoreService = request.app.state.vector_store_service
+    contract_analysis_service: ContractAnalysisService = request.app.state.contract_analysis_service
 
     try:
         file_bytes = await file.read()
@@ -195,9 +204,11 @@ async def ingest_document(
             source_file=safe_filename,
             collection_name=project.collection_name,
             overwrite=overwrite,
+            project_id=project.id,
             ingestion_service=ingestion_service,
             vector_store_service=vector_store_service,
             job_service=job_service,
+            contract_analysis_service=contract_analysis_service,
         )
     )
 

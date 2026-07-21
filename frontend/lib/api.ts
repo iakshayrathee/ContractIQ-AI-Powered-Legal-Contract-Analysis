@@ -40,7 +40,17 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(body.detail ?? `HTTP ${res.status}`);
+    const detail = body.detail;
+    // FastAPI validation errors return detail as an array of objects; stringify them
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+        ? detail.map((e: { msg?: string; message?: string }) => e.msg ?? e.message ?? JSON.stringify(e)).join("; ")
+        : detail != null
+        ? JSON.stringify(detail)
+        : `HTTP ${res.status}`;
+    throw new Error(message);
   }
 
   // 204 No Content
@@ -367,5 +377,6 @@ export const analysisApi = {
 // ---------------------------------------------------------------------------
 
 export const dashboardApi = {
-  getStats: (): Promise<DashboardStats> => request("/dashboard/stats"),
+  getStats: (range: string = "all"): Promise<DashboardStats> =>
+    request(`/dashboard/stats?range=${encodeURIComponent(range)}`),
 };

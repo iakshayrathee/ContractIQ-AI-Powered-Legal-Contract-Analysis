@@ -12,6 +12,7 @@ from app.auth.dependencies import get_current_user
 from app.db.models import ChatMessageRow, ProjectRow
 from app.schemas.requests import CreateProjectRequest
 from app.schemas.responses import ChatMessageResponse, ChunkItem, ChunksResponse, ProjectResponse, SourceChunk
+from app.services.contract_analysis_service import ContractAnalysisService
 from app.services.project_service import ProjectService
 from app.services.vector_store_service import VectorStoreService
 
@@ -345,10 +346,29 @@ async def delete_document(
     
     # Delete vector chunks
     vs.delete_document_points(safe_name, project.collection_name)
-    
+
+    # Count documents remaining after this deletion (the file is already gone).
+    remaining = _count_documents_on_disk(project.collection_name)
+
+    # There is a single analysis per project covering the whole corpus, so ANY
+    # change to the document set makes it stale — always invalidate it.
+    cas: ContractAnalysisService = request.app.state.contract_analysis_service
+    await cas.invalidate_analyses(project.id)
+
+    # Chat is grounded in the corpus:
+    #   - Last document removed (corpus now empty): every answer is orphaned, so
+    #     clear the chat history.
+    #   - Documents still remain: the conversation is still supported by the
+    #     remaining docs, so keep it (don't destroy valid Q&A history).
+    chat_cleared = False
+    if remaining == 0:
+        await ps.clear_chat_history(project_name, user_id=user_id)
+        chat_cleared = True
+
     logger.info(
-        "Deleted document '%s' from project '%s' (user=%s)",
-        safe_name, project_name, user_id,
+        "Deleted document '%s' from project '%s' (user=%s): analyses invalidated, "
+        "remaining_docs=%d, chat_cleared=%s",
+        safe_name, project_name, user_id, remaining, chat_cleared,
     )
 
 

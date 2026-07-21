@@ -92,6 +92,11 @@ class AnalysisRow(Base):
     quality_score: Mapped[float] = mapped_column(Float, default=0.0)  # Judge overall score 0.0-1.0
     flagged_for_review: Mapped[bool] = mapped_column(default=False)  # True if judge flagged for human review
 
+    # Pipeline stage indicator (WS-2.2): updated as each pipeline step completes
+    # Values: extracting_clauses | assessing_risk | writing_summary | reviewing_quality
+    # JSON payload: {"stage": "extracting_clauses", "processed": 12, "total": 40}
+    stage_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Optional user scoping (nullable for backward compat with existing analyses)
     user_id: Mapped[str | None] = mapped_column(
         String(64), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True

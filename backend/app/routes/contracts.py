@@ -159,7 +159,14 @@ async def get_analysis(
     analysis = None
     risk_report = None
     summary = None
-    
+    stage = None
+
+    if row.stage_json:
+        try:
+            stage = json.loads(row.stage_json)
+        except Exception:
+            pass
+
     if row.status == "completed":
         if row.analysis_json and row.analysis_json not in ("{}", "null", ""):
             try:
@@ -179,12 +186,31 @@ async def get_analysis(
             except Exception as e:
                 logger.warning("Failed to parse summary_json for project '%s': %s", project_name, e)
 
+    elif row.status == "running":
+        # WS-2.3: return partial results for progressive rendering while running
+        if row.analysis_json and row.analysis_json not in ("{}", "null", ""):
+            try:
+                analysis = ContractAnalysis.model_validate_json(row.analysis_json)
+            except Exception:
+                pass
+        if row.risk_json and row.risk_json not in ("{}", "null", ""):
+            try:
+                risk_report = RiskReport.model_validate_json(row.risk_json)
+            except Exception:
+                pass
+        if row.summary_json and row.summary_json not in ("{}", "null", ""):
+            try:
+                summary = PlainSummary.model_validate_json(row.summary_json)
+            except Exception:
+                pass
+
     return AnalysisResponse(
         project_name=project_name,
         status=row.status,
         analysis=analysis,
         risk_report=risk_report,
         summary=summary,
+        stage=stage,
     )
 
 

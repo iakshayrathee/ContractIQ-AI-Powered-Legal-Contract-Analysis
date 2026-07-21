@@ -6,14 +6,29 @@ import { jobsApi } from "@/lib/api";
 import type { Job } from "@/lib/types";
 import { CheckCircle, AlertCircle, Clock, HelpCircle, Upload, Scissors, Brain, Database, BarChart2, X } from "lucide-react";
 
+// Stat chip colour variants
+type StatVariant = "default" | "amber" | "pink";
+
+const STAT_VARIANT_STYLES: Record<StatVariant, string> = {
+  default: "bg-surface/80 border-border text-white",
+  amber:   "bg-amber-500/10 border-amber-500/25 text-amber-300",
+  pink:    "bg-pink-500/10  border-pink-500/25  text-pink-300",
+};
+
 // Maps frontend display steps to backend step names
-const PIPELINE_STEPS = [
+const PIPELINE_STEPS: {
+  name: string;
+  stepKey: string | null;
+  icon: React.ElementType;
+  description: string;
+  statKeys: { key: string; label: string; format?: (v: number) => string; variant?: StatVariant }[];
+}[] = [
   {
     name: "File Upload",
     stepKey: null, // Not a backend step — completes when job is created
     icon: Upload,
     description: "Contract file received and saved to server storage",
-    statKeys: [], // No details for this step
+    statKeys: [],
   },
   {
     name: "Parsing",
@@ -21,11 +36,11 @@ const PIPELINE_STEPS = [
     icon: Scissors,
     description: "Extract text, tables, and images from PDF (PyMuPDF) or DOCX (python-docx) — page by page",
     statKeys: [
-      { key: "total_pages", label: "Pages" },
-      { key: "non_empty_pages", label: "Non-empty" },
-      { key: "total_characters", label: "Characters", format: (v: number) => v.toLocaleString() },
-      { key: "total_tables", label: "Tables" },
-      { key: "total_images", label: "Images" },
+      { key: "total_pages",      label: "Pages" },
+      { key: "non_empty_pages",  label: "Non-empty" },
+      { key: "total_characters", label: "Characters", format: (v) => v.toLocaleString() },
+      { key: "total_tables",     label: "Tables",     variant: "amber" },
+      { key: "total_images",     label: "Images",     variant: "pink" },
     ],
   },
   {
@@ -34,8 +49,8 @@ const PIPELINE_STEPS = [
     icon: BarChart2,
     description: "Split text into overlapping chunks (size=1024, overlap=200) with accurate page tracking",
     statKeys: [
-      { key: "chunks_count", label: "Chunks" },
-      { key: "avg_chunk_size", label: "Avg size (chars)" },
+      { key: "chunks_count",             label: "Chunks" },
+      { key: "avg_chunk_size",           label: "Avg size (chars)" },
       { key: "image_description_chunks", label: "Image chunks" },
     ],
   },
@@ -45,7 +60,7 @@ const PIPELINE_STEPS = [
     icon: Brain,
     description: "Build contextual embeddings with metadata (document, page, clause type, section) for better retrieval",
     statKeys: [
-      { key: "total_chunks", label: "Total chunks" },
+      { key: "total_chunks",     label: "Total chunks" },
       { key: "processed_chunks", label: "Processed" },
     ],
   },
@@ -55,7 +70,7 @@ const PIPELINE_STEPS = [
     icon: Database,
     description: "Generate dense (text-embedding-3-small) + sparse (BM25) vectors with hybrid RRF scoring → store in Qdrant",
     statKeys: [
-      { key: "vectors_stored", label: "Vectors stored" },
+      { key: "vectors_stored",  label: "Vectors stored" },
       { key: "collection_name", label: "Collection" },
     ],
   },
@@ -65,6 +80,7 @@ interface Props {
   jobId: string | null;
   projectName: string;
   onClose: () => void;
+  onComplete?: () => void;
 }
 
 function QueueTooltip() {
@@ -105,8 +121,9 @@ function QueueTooltip() {
   );
 }
 
-export default function PipelineModal({ jobId, projectName, onClose }: Props) {
+export default function PipelineModal({ jobId, projectName, onClose, onComplete }: Props) {
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [completedNotified, setCompletedNotified] = useState(false);
 
   const { data: job } = useQuery<Job>({
     queryKey: ["job", jobId],
@@ -120,6 +137,20 @@ export default function PipelineModal({ jobId, projectName, onClose }: Props) {
   });
 
   const isDone = job?.status === "completed" || job?.status === "failed";
+
+  // Fire onComplete once when the job successfully finishes so the parent
+  // can invalidate chunkStats immediately (without waiting for user to click Done)
+  useEffect(() => {
+    if (job?.status === "completed" && !completedNotified) {
+      setCompletedNotified(true);
+      onComplete?.();
+    }
+  }, [job?.status, completedNotified, onComplete]);
+
+  // Reset notified flag when a new job starts
+  useEffect(() => {
+    if (jobId) setCompletedNotified(false);
+  }, [jobId]);
 
   // Escape key to close
   useEffect(() => {
@@ -258,14 +289,14 @@ export default function PipelineModal({ jobId, projectName, onClose }: Props) {
                   {/* Step stats from job details */}
                   {hasStats && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {step.statKeys.map(({ key, label, format }) => {
+                      {step.statKeys.map(({ key, label, format, variant = "default" }) => {
                         const val = details[key as string];
                         if (val === undefined || val === null) return null;
                         const display = format ? format(val as number) : String(val);
                         return (
-                          <div key={key} className="flex items-center gap-1.5 bg-surface/80 border border-border rounded-lg px-2.5 py-1.5">
+                          <div key={key} className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 ${STAT_VARIANT_STYLES[variant]}`}>
                             <span className="text-[10px] text-subtle uppercase tracking-wide">{label}:</span>
-                            <span className="text-xs font-semibold text-white">{display}</span>
+                            <span className="text-xs font-semibold">{display}</span>
                           </div>
                         );
                       })}

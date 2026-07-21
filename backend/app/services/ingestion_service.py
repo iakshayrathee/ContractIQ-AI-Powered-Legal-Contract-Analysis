@@ -149,11 +149,13 @@ class IngestionService:
         total_chars = sum(len(p["text"]) for p in pages)
         non_empty = sum(1 for p in pages if p["text"].strip())
         total_images = sum(len(p.get("images", [])) for p in pages)
+        total_tables = sum(len(p.get("tables", [])) for p in pages)
         return {
             "total_pages": len(pages),
             "non_empty_pages": non_empty,
             "total_characters": total_chars,
-            "candidate_images": total_images,
+            "total_images": total_images,
+            "total_tables": total_tables,
         }
 
     # ------------------------------------------------------------------
